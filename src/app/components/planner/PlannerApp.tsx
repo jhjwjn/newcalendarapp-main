@@ -33,14 +33,8 @@ interface PlannerAppProps {
 export function PlannerApp({ onSwitchApp }: PlannerAppProps) {
   const { session, settings } = usePlanner();
   const [activeTab, setActiveTab] = useState<TabType>('home');
-  const [localMode, setLocalMode] = useState(false);
   const [showRepeatModal, setShowRepeatModal] = useState(false);
   const theme = getPlannerTheme(settings);
-
-  React.useEffect(() => {
-    const isLocalMode = localStorage.getItem('planner_local_mode') === 'true';
-    setLocalMode(isLocalMode);
-  }, []);
 
   React.useEffect(() => {
     document.body.className = `theme-${settings.theme}`;
@@ -48,14 +42,9 @@ export function PlannerApp({ onSwitchApp }: PlannerAppProps) {
     document.body.style.color = theme.text;
   }, [settings.theme, theme.pageBackground, theme.text]);
 
-  if (!session && !localMode) {
+  if (!session) {
     return (
-      <LoginScreen
-        onLocalMode={() => {
-          localStorage.setItem('planner_local_mode', 'true');
-          setLocalMode(true);
-        }}
-      />
+      <LoginScreen />
     );
   }
 

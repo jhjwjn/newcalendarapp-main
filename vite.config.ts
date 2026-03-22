@@ -8,7 +8,7 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
-  base: './',
+  base: '/newcalendarapp-main/',
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

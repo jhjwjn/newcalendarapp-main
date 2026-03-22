@@ -8,6 +8,7 @@ import { HomeTab } from './tabs/HomeTab_Dynamic';
 import { RecordsTab } from './tabs/RecordsTab';
 import { BodyTab } from './tabs/BodyTab';
 import { SettingsTab } from './tabs/SettingsTab';
+import { HealthLoginScreen } from './HealthLoginScreen';
 
 type ThemeMode = 'light' | 'dark';
 type AccentColor = 'red' | 'blue' | 'orange' | 'black';
@@ -17,7 +18,7 @@ interface HealthAppProps {
 }
 
 export function HealthApp({ onSwitchApp }: HealthAppProps) {
-  const { settings, currentWeek, workoutRecords } = useHealth();
+  const { session, settings, currentWeek, workoutRecords } = useHealth();
   const [activeTab, setActiveTab] = useState<'home' | 'workout' | 'records' | 'body' | 'settings'>('home');
   const [themeMode, setThemeMode] = useState<ThemeMode>(settings.isDarkMode ? 'dark' : 'light');
   const [accentColor, setAccentColor] = useState<AccentColor>(((settings.isDarkMode ? settings.dynamicAccentDark : settings.dynamicAccent) as AccentColor) || 'orange');
@@ -39,6 +40,10 @@ export function HealthApp({ onSwitchApp }: HealthAppProps) {
   ];
 
   const thisWeekSessions = workoutRecords.filter(record => record.weekNumber === currentWeek).length;
+
+  if (!session) {
+    return <HealthLoginScreen />;
+  }
 
   return (
     <div className="min-h-screen" style={{ background: theme.pageBackground, color: theme.text }}>
