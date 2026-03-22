@@ -1,0 +1,135 @@
+/* Base Styles */
+* {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  margin: 0;
+  font-weight: 700;
+}
+
+/* Theme transition for all themed elements */
+.theme-transition,
+.theme-transition * {
+  transition: background-color 0.3s ease, 
+              color 0.3s ease, 
+              border-color 0.3s ease,
+              box-shadow 0.3s ease;
+}
+
+/* Slate Theme (기본) */
+.theme-slate {
+  --planner-bg: #f5f5f5;
+  --planner-card: #ffffff;
+  --planner-card-border: #e5e7eb;
+  --planner-primary: #64748b;
+  --planner-primary-light: #cbd5e1;
+  --planner-primary-dark: #475569;
+  --planner-accent: #e2e8f0;
+  --planner-text: #111827;
+  --planner-text-secondary: #6b7280;
+  --planner-text-muted: #9ca3af;
+}
+
+/* Forest Theme (다크 라임) */
+.theme-forest {
+  --planner-bg: #000000;
+  --planner-card: #1a1a1a;
+  --planner-card-border: #2a2a2a;
+  --planner-primary: #84cc16;
+  --planner-primary-light: #bef264;
+  --planner-primary-dark: #65a30d;
+  --planner-accent: #262626;
+  --planner-text: #ffffff;
+  --planner-text-secondary: #a3a3a3;
+  --planner-text-muted: #737373;
+}
+
+/* Rose Theme (블랙 레드) */
+.theme-rose {
+  --planner-bg: #000000;
+  --planner-card: #1a1a1a;
+  --planner-card-border: #2a2a2a;
+  --planner-primary: #ef4444;
+  --planner-primary-light: #fca5a5;
+  --planner-primary-dark: #dc2626;
+  --planner-accent: #262626;
+  --planner-text: #ffffff;
+  --planner-text-secondary: #a3a3a3;
+  --planner-text-muted: #737373;
+}
+
+/* Amber Theme (네이비 골드) */
+.theme-amber {
+  --planner-bg: #0a1929;
+  --planner-card: #1e293b;
+  --planner-card-border: #334155;
+  --planner-primary: #fbbf24;
+  --planner-primary-light: #fde047;
+  --planner-primary-dark: #f59e0b;
+  --planner-accent: #334155;
+  --planner-text: #ffffff;
+  --planner-text-secondary: #cbd5e1;
+  --planner-text-muted: #94a3b8;
+}
+
+/* White Theme */
+.theme-white {
+  --planner-bg: #ffffff;
+  --planner-card: #f9fafb;
+  --planner-card-border: #e5e7eb;
+  --planner-primary: #000000;
+  --planner-primary-light: #404040;
+  --planner-primary-dark: #171717;
+  --planner-accent: #f3f4f6;
+  --planner-text: #111827;
+  --planner-text-secondary: #6b7280;
+  --planner-text-muted: #9ca3af;
+}
+
+/* Mono Theme (다크) */
+.theme-mono {
+  --planner-bg: #000000;
+  --planner-card: #1a1a1a;
+  --planner-card-border: #2a2a2a;
+  --planner-primary: #ffffff;
+  --planner-primary-light: #d4d4d4;
+  --planner-primary-dark: #a3a3a3;
+  --planner-accent: #262626;
+  --planner-text: #ffffff;
+  --planner-text-secondary: #a3a3a3;
+  --planner-text-muted: #737373;
+}
+
+/* Typography */
+.planner-heading {
+  color: var(--planner-text);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.planner-text {
+  color: var(--planner-text);
+}
+
+.planner-text-secondary {
+  color: var(--planner-text-secondary);
+}
+
+.planner-text-muted {
+  color: var(--planner-text-muted);
+}
