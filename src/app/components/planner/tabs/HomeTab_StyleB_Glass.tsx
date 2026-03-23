@@ -293,6 +293,12 @@ export function HomeTab({ onNavigate }: HomeTabProps) {
   const greeting = currentHour < 12 ? 'Good Morning' : currentHour < 18 ? 'Good Afternoon' : 'Good Evening';
   const GreetingIcon = currentHour < 18 ? Sun : Moon;
   const aiOneLiner = todayBriefing?.split(/[.!?]\s/)[0] || '오늘도 작은 루틴 하나가 하루의 결을 바꿉니다.';
+  const nameSuffix = settings.name ? `, ${settings.name}` : '';
+  const cardBackground = settings.isDarkMode
+    ? `linear-gradient(135deg, ${theme.primary}25, ${theme.secondary}20)`
+    : `linear-gradient(135deg, ${theme.primary}20, rgba(255, 255, 255, 0.9))`;
+  const cardBorderColor = settings.isDarkMode ? `${theme.primary}40` : 'rgba(255, 255, 255, 0.4)';
+  const cardBoxShadow = settings.isDarkMode ? `0 8px 32px ${theme.primary}30` : '0 8px 32px rgba(0, 0, 0, 0.08)';
 
   const refreshHealthSchedule = () => {
     setHealthScheduleRows(getHealthScheduleRows());
@@ -352,10 +358,10 @@ export function HomeTab({ onNavigate }: HomeTabProps) {
       <div className="absolute bottom-20 right-10 w-96 h-96 rounded-full opacity-30 blur-3xl" style={{ background: theme.bgBlur2 }} />
       <div className="absolute top-1/2 left-1/2 h-96 w-96 -translate-x-1/2 -translate-y-1/2 rounded-full opacity-20 blur-3xl" style={{ background: theme.bgBlur3 }} />
 
-      <div className="relative mx-auto max-w-[1180px] px-4 pb-5 pt-3 md:px-5 md:pt-4">
-        <div className="mb-5 grid grid-cols-1 gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+      <div className="relative mx-auto max-w-[1180px] px-2 pb-3 pt-2 md:px-5 md:pt-4">
+        <div className="mb-3 md:mb-5 grid grid-cols-1 gap-3 md:gap-4 xl:grid-cols-[1.1fr_0.9fr]">
           <div
-            className="rounded-[28px] border px-5 py-5"
+            className="rounded-2xl md:rounded-[28px] border px-3 md:px-5 py-3 md:py-5"
             style={{
               background: settings.isDarkMode
                 ? `linear-gradient(135deg, ${theme.accent1}20, ${theme.primary}16)`
@@ -365,33 +371,50 @@ export function HomeTab({ onNavigate }: HomeTabProps) {
               boxShadow: settings.isDarkMode ? `0 10px 32px ${theme.accent1}24` : `0 10px 32px ${theme.accent1}18`,
             }}
           >
-            <div className="mb-3 flex items-center gap-2">
-              <Sparkles className="h-4 w-4" style={{ color: theme.accent1 }} />
-              <span className="text-xs font-semibold uppercase tracking-[0.24em]" style={{ color: theme.textMuted }}>
+            <div className="mb-2 md:mb-3 flex items-center gap-1.5 md:gap-2">
+              <Sparkles className="h-3 w-3 md:h-4 md:w-4" style={{ color: theme.accent1 }} />
+              <span className="text-[10px] md:text-xs font-semibold uppercase tracking-[0.24em]" style={{ color: theme.textMuted }}>
                 Today&apos;s Note
               </span>
             </div>
-            <p className="text-base font-medium leading-7 md:text-lg md:leading-8" style={{ color: theme.text }}>
+            <p className="text-sm md:text-base font-medium leading-5 md:leading-8" style={{ color: theme.text }}>
               {aiOneLiner}
+            </p>
+          </div>
+
+          <div
+            className="rounded-2xl md:rounded-[28px] border px-3 md:px-5 py-3 md:py-5"
+            style={{
+              background: cardBackground,
+              backdropFilter: 'blur(20px)',
+              borderColor: cardBorderColor,
+              boxShadow: cardBoxShadow,
+            }}
+          >
+            <div className="mb-1.5 md:mb-2 flex items-center gap-2 md:gap-3">
+              <GreetingIcon className="h-4 w-4 md:h-5 md:w-5" style={{ color: theme.primary }} />
+              <h1 className="text-lg md:text-2xl md:text-[30px] font-medium" style={{ color: theme.text }}>
+                {greeting}{nameSuffix}
+              </h1>
+            </div>
+            <p className="text-xs md:text-sm" style={{ color: settings.isDarkMode ? theme.secondary : theme.textMuted }}>
+              {format(today, 'MMMM d, yyyy · EEEE', { locale: ko })}
             </p>
           </div>
 
           <div
             className="rounded-[28px] border px-5 py-5"
             style={{
-              background: settings.isDarkMode
-                ? `linear-gradient(135deg, ${theme.primary}25, ${theme.secondary}20)`
-                : `linear-gradient(135deg, ${theme.primary}20, rgba(255, 255, 255, 0.9))`,
+              background: cardBackground,
               backdropFilter: 'blur(20px)',
-              borderColor: settings.isDarkMode ? `${theme.primary}40` : 'rgba(255, 255, 255, 0.4)',
-              boxShadow: settings.isDarkMode ? `0 8px 32px ${theme.primary}30` : '0 8px 32px rgba(0, 0, 0, 0.08)',
+              borderColor: cardBorderColor,
+              boxShadow: cardBoxShadow,
             }}
           >
             <div className="mb-2 flex items-center gap-3">
               <GreetingIcon className="h-5 w-5" style={{ color: theme.primary }} />
               <h1 className="text-2xl font-medium md:text-[30px]" style={{ color: theme.text }}>
-                {greeting}
-                {settings.name ? `, ${settings.name}` : ''}
+                {greeting}{nameSuffix}
               </h1>
             </div>
             <p className="text-sm" style={{ color: settings.isDarkMode ? theme.secondary : theme.textMuted }}>
@@ -400,65 +423,65 @@ export function HomeTab({ onNavigate }: HomeTabProps) {
           </div>
         </div>
 
-        <div className="mb-5 grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <div className="mb-3 md:mb-5 grid grid-cols-4 gap-2 md:gap-3 xl:grid-cols-4">
           <button
             onClick={() => onNavigate('calendar')}
-            className="group flex h-full flex-col rounded-3xl border p-4 text-left transition-all hover:scale-[1.03] md:p-5"
+            className="group flex flex-col rounded-2xl md:rounded-3xl border p-2.5 md:p-4 text-left transition-all hover:scale-[1.02] md:hover:scale-[1.03]"
             style={{
               background: settings.isDarkMode ? `linear-gradient(135deg, ${theme.primary}30, ${theme.primary}15)` : theme.cardPrimary,
               backdropFilter: 'blur(20px)',
               borderColor: settings.isDarkMode ? `${theme.primary}50` : 'rgba(255, 255, 255, 0.4)',
-              boxShadow: `0 8px 32px ${theme.primary}26`,
+              boxShadow: `0 4px 16px ${theme.primary}20`,
             }}
           >
-            <div className="mb-4 flex min-h-[52px] items-start gap-3">
-              <div className="rounded-2xl p-2.5" style={{ background: settings.isDarkMode ? `${theme.primary}50` : theme.iconBg }}>
-                <Calendar className="h-5 w-5" style={{ color: theme.primary }} />
+            <div className="flex items-center gap-1.5 md:gap-2 mb-1.5 md:mb-3">
+              <div className="rounded-lg md:rounded-2xl p-1.5 md:p-2.5" style={{ background: settings.isDarkMode ? `${theme.primary}50` : theme.iconBg }}>
+                <Calendar className="h-3.5 w-3.5 md:h-5 md:w-5" style={{ color: theme.primary }} />
               </div>
-              <span className="pt-1 text-sm font-medium leading-5" style={{ color: theme.textMuted }}>Today&apos;s Events</span>
+              <span className="text-[10px] md:text-sm font-medium" style={{ color: theme.textMuted }}>Events</span>
             </div>
-            <div className="mb-1 text-3xl font-bold md:text-[34px]" style={{ color: theme.text }}>{todayEvents.length}</div>
-            <div className="text-xs" style={{ color: theme.textMuted }}>scheduled for today</div>
+            <div className="text-xl md:text-3xl font-bold" style={{ color: theme.text }}>{todayEvents.length}</div>
+            <div className="text-[9px] md:text-xs" style={{ color: theme.textMuted }}>today</div>
           </button>
 
           <button
             onClick={() => onNavigate('notes')}
-            className="group flex h-full flex-col rounded-3xl border p-4 text-left transition-all hover:scale-[1.03] md:p-5"
+            className="group flex flex-col rounded-2xl md:rounded-3xl border p-2.5 md:p-4 text-left transition-all hover:scale-[1.02] md:hover:scale-[1.03]"
             style={{
               background: settings.isDarkMode ? `linear-gradient(135deg, ${theme.secondary}30, ${theme.secondary}15)` : theme.cardSecondary,
               backdropFilter: 'blur(20px)',
               borderColor: settings.isDarkMode ? `${theme.secondary}50` : 'rgba(255, 255, 255, 0.4)',
-              boxShadow: `0 8px 32px ${theme.secondary}26`,
+              boxShadow: `0 4px 16px ${theme.secondary}20`,
             }}
           >
-            <div className="mb-4 flex min-h-[52px] items-start gap-3">
-              <div className="rounded-2xl p-2.5" style={{ background: settings.isDarkMode ? `${theme.secondary}50` : theme.iconBg }}>
-                <FileText className="h-5 w-5" style={{ color: theme.secondary }} />
+            <div className="flex items-center gap-1.5 md:gap-2 mb-1.5 md:mb-3">
+              <div className="rounded-lg md:rounded-2xl p-1.5 md:p-2.5" style={{ background: settings.isDarkMode ? `${theme.secondary}50` : theme.iconBg }}>
+                <FileText className="h-3.5 w-3.5 md:h-5 md:w-5" style={{ color: theme.secondary }} />
               </div>
-              <span className="pt-1 text-sm font-medium leading-5" style={{ color: theme.textMuted }}>Notes</span>
+              <span className="text-[10px] md:text-sm font-medium" style={{ color: theme.textMuted }}>Notes</span>
             </div>
-            <div className="mb-1 text-3xl font-bold md:text-[34px]" style={{ color: theme.text }}>{notes.length}</div>
-            <div className="text-xs" style={{ color: theme.textMuted }}>saved notes</div>
+            <div className="text-xl md:text-3xl font-bold" style={{ color: theme.text }}>{notes.length}</div>
+            <div className="text-[9px] md:text-xs" style={{ color: theme.textMuted }}>saved</div>
           </button>
 
           <button
             onClick={() => onNavigate('study')}
-            className="group flex h-full flex-col rounded-3xl border p-4 text-left transition-all hover:scale-[1.03] md:p-5"
+            className="group flex flex-col rounded-2xl md:rounded-3xl border p-2.5 md:p-4 text-left transition-all hover:scale-[1.02] md:hover:scale-[1.03]"
             style={{
               background: settings.isDarkMode ? `linear-gradient(135deg, ${theme.tertiary}30, ${theme.tertiary}15)` : theme.cardTertiary,
               backdropFilter: 'blur(20px)',
               borderColor: settings.isDarkMode ? `${theme.tertiary}50` : 'rgba(255, 255, 255, 0.4)',
-              boxShadow: `0 8px 32px ${theme.tertiary}26`,
+              boxShadow: `0 4px 16px ${theme.tertiary}20`,
             }}
           >
-            <div className="mb-4 flex min-h-[52px] items-start gap-3">
-              <div className="rounded-2xl p-2.5" style={{ background: settings.isDarkMode ? `${theme.tertiary}50` : theme.iconBg }}>
-                <BookOpen className="h-5 w-5" style={{ color: theme.tertiary }} />
+            <div className="flex items-center gap-1.5 md:gap-2 mb-1.5 md:mb-3">
+              <div className="rounded-lg md:rounded-2xl p-1.5 md:p-2.5" style={{ background: settings.isDarkMode ? `${theme.tertiary}50` : theme.iconBg }}>
+                <BookOpen className="h-3.5 w-3.5 md:h-5 md:w-5" style={{ color: theme.tertiary }} />
               </div>
-              <span className="pt-1 text-sm font-medium leading-5" style={{ color: theme.textMuted }}>Study Streak</span>
+              <span className="text-[10px] md:text-sm font-medium" style={{ color: theme.textMuted }}>Streak</span>
             </div>
-            <div className="mb-1 text-3xl font-bold md:text-[34px]" style={{ color: theme.text }}>{studySessions[studySessions.length - 1]?.streak || 0}</div>
-            <div className="text-xs" style={{ color: theme.textMuted }}>days in a row</div>
+            <div className="text-xl md:text-3xl font-bold" style={{ color: theme.text }}>{studySessions[studySessions.length - 1]?.streak || 0}</div>
+            <div className="text-[9px] md:text-xs" style={{ color: theme.textMuted }}>days</div>
           </button>
 
           <button

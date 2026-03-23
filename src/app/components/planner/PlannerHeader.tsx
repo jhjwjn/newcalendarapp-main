@@ -17,15 +17,15 @@ export function PlannerHeader({ onSwitchApp }: PlannerHeaderProps) {
 
   const getSyncIcon = () => {
     if (isLocalMode) {
-      return <Cloud className="h-5 w-5" style={{ color: theme.textMuted }} />;
+      return <Cloud className="h-4 w-4" style={{ color: theme.textMuted }} />;
     }
     switch (syncState.status) {
       case 'syncing':
-        return <Loader2 className="h-5 w-5 animate-spin" style={{ color: theme.primary }} />;
+        return <Loader2 className="h-4 w-4 animate-spin" style={{ color: theme.primary }} />;
       case 'synced':
-        return <Cloud className="h-5 w-5" style={{ color: theme.tertiary }} />;
+        return <Cloud className="h-4 w-4" style={{ color: theme.tertiary }} />;
       case 'error':
-        return <CloudOff className="h-5 w-5" style={{ color: theme.accent1 }} />;
+        return <CloudOff className="h-4 w-4" style={{ color: theme.accent1 }} />;
     }
   };
 
@@ -42,16 +42,16 @@ export function PlannerHeader({ onSwitchApp }: PlannerHeaderProps) {
   };
 
   return (
-    <header className="fixed left-0 right-0 top-0 z-50 px-3 pt-3 md:px-5">
+    <header className="fixed left-0 right-0 top-0 z-50 px-1.5 pt-1 md:px-5 md:pt-3">
       <div
-        className="mx-auto flex h-16 max-w-[1600px] items-center justify-between rounded-[28px] border px-4 backdrop-blur-2xl md:px-5"
+        className="mx-auto flex h-10 md:h-16 max-w-[1600px] items-center justify-between rounded-2xl md:rounded-[28px] border px-2 md:px-4 backdrop-blur-2xl"
         style={{
           background: theme.shellBackground,
           borderColor: theme.shellBorder,
           boxShadow: theme.shellShadow,
         }}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <WorkspaceSwitchButton
             appName="planner"
             onClick={onSwitchApp}
@@ -61,7 +61,7 @@ export function PlannerHeader({ onSwitchApp }: PlannerHeaderProps) {
           />
 
           <div
-            className="hidden items-center gap-2 rounded-full px-3 py-2 text-sm sm:flex"
+            className="hidden items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs sm:flex"
             style={{ background: theme.badgeBackground, color: theme.badgeText }}
           >
             {getSyncIcon()}
@@ -72,11 +72,11 @@ export function PlannerHeader({ onSwitchApp }: PlannerHeaderProps) {
         <div className="relative">
           <button
             onClick={() => setShowUserMenu(!showUserMenu)}
-            className="flex items-center gap-2 rounded-2xl px-3 py-2 transition-colors"
+            className="flex items-center gap-1.5 rounded-xl px-2 py-1.5 transition-colors"
             style={{ background: theme.navBackground }}
           >
-            <User className="h-5 w-5" style={{ color: theme.textSecondary }} />
-            <span className="hidden text-sm sm:inline" style={{ color: theme.text }}>
+            <User className="h-4 w-4" style={{ color: theme.textSecondary }} />
+            <span className="hidden text-xs sm:inline" style={{ color: theme.text }}>
               {user ? user.email?.split('@')[0] : '로컬 사용자'}
             </span>
           </button>
@@ -110,10 +110,10 @@ export function PlannerHeader({ onSwitchApp }: PlannerHeaderProps) {
                         await manualSync();
                         setShowUserMenu(false);
                       }}
-                      className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm"
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs"
                       style={{ color: theme.textSecondary }}
                     >
-                      <RefreshCw className="h-4 w-4" />
+                      <RefreshCw className="h-3.5 w-3.5" />
                       수동 동기화
                     </button>
                   )}
@@ -123,10 +123,10 @@ export function PlannerHeader({ onSwitchApp }: PlannerHeaderProps) {
                         await signOut();
                         setShowUserMenu(false);
                       }}
-                      className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm"
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs"
                       style={{ color: theme.accent1 }}
                     >
-                      <LogOut className="h-4 w-4" />
+                      <LogOut className="h-3.5 w-3.5" />
                       로그아웃
                     </button>
                   )}
@@ -136,10 +136,10 @@ export function PlannerHeader({ onSwitchApp }: PlannerHeaderProps) {
                         localStorage.removeItem('planner_local_mode');
                         window.location.reload();
                       }}
-                      className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm"
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs"
                       style={{ color: theme.textSecondary }}
                     >
-                      <LogOut className="h-4 w-4" />
+                      <LogOut className="h-3.5 w-3.5" />
                       로그인 화면으로
                     </button>
                   )}
