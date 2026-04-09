@@ -16,9 +16,6 @@ export function PlannerHeader({ onSwitchApp }: PlannerHeaderProps) {
   const isLocalMode = !user && localStorage.getItem('planner_local_mode') === 'true';
 
   const getSyncIcon = () => {
-    if (isLocalMode) {
-      return <Cloud className="h-4 w-4" style={{ color: theme.textMuted }} />;
-    }
     switch (syncState.status) {
       case 'syncing':
         return <Loader2 className="h-4 w-4 animate-spin" style={{ color: theme.primary }} />;
@@ -30,7 +27,6 @@ export function PlannerHeader({ onSwitchApp }: PlannerHeaderProps) {
   };
 
   const getSyncText = () => {
-    if (isLocalMode) return '로컬 모드';
     switch (syncState.status) {
       case 'syncing':
         return '동기화 중...';
@@ -42,9 +38,9 @@ export function PlannerHeader({ onSwitchApp }: PlannerHeaderProps) {
   };
 
   return (
-    <header className="fixed left-0 right-0 top-0 z-50 px-1.5 pt-1 md:px-5 md:pt-3">
+    <header className="fixed left-0 right-0 top-0 z-50 px-3 pt-3 md:px-5">
       <div
-        className="mx-auto flex h-10 md:h-16 max-w-[1600px] items-center justify-between rounded-2xl md:rounded-[28px] border px-2 md:px-4 backdrop-blur-2xl"
+        className="mx-auto flex h-16 max-w-[1600px] items-center justify-between rounded-[28px] border px-4 backdrop-blur-2xl"
         style={{
           background: theme.shellBackground,
           borderColor: theme.shellBorder,

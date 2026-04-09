@@ -1,772 +1,358 @@
 import React, { useMemo, useState } from 'react';
-import { format, addDays } from 'date-fns';
+import { format, addDays, isToday, isTomorrow } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Calendar,
   FileText,
   BookOpen,
-  Heart,
-  Sun,
-  Moon,
+  Zap,
   ChevronRight,
   Sparkles,
-  Dumbbell,
-  X,
+  RefreshCw,
+  Clock,
   CheckCircle2,
+  Circle,
 } from 'lucide-react';
-import { toast } from '../../../lib/toast';
 import { usePlanner } from '../../../context/PlannerContext';
-import { DayRoutine, WeekPlan } from '../../../types/health';
-import { PLANNER_GLASS_THEMES, PLANNER_GLASS_THEMES_DARK } from '../../../styles/colorThemes';
+import { getPlannerTheme } from '../../../lib/plannerTheme';
 
 interface HomeTabProps {
-  onNavigate: (tab: 'calendar' | 'notes' | 'study') => void;
-}
-
-interface HealthScheduleRow {
-  dayOfWeek: number;
-  label: string;
-  planned: boolean;
-  selected: boolean;
-  time: string;
-  routineName: string;
-  summary: string;
-  plans: Array<{
-    weekNumber: number;
-    weekOffset: number;
-    routineName: string;
-    summary: string;
-  }>;
-}
-
-const DAYS_OF_WEEK = ['일', '월', '화', '수', '목', '금', '토'];
-
-const getGlassTheme = (accent: 'blue' | 'purple' | 'peach' | 'black', isDark = false) => {
-  const colors = isDark ? PLANNER_GLASS_THEMES_DARK[accent] : PLANNER_GLASS_THEMES[accent];
-
-  if (isDark) {
-    const themes = {
-      blue: {
-        bg: 'linear-gradient(135deg, #0F172A 0%, #1E293B 50%, #0F172A 100%)',
-        primary: colors.primary,
-        secondary: colors.secondary,
-        tertiary: colors.tertiary,
-        accent1: colors.accent1,
-        accent2: colors.accent2,
-        bgBlur1: `radial-gradient(circle, ${colors.primary}30, transparent)`,
-        bgBlur2: `radial-gradient(circle, ${colors.accent1}30, transparent)`,
-        bgBlur3: `radial-gradient(circle, ${colors.tertiary}30, transparent)`,
-        cardPrimary: `linear-gradient(135deg, ${colors.primary}20, rgba(30, 41, 59, 0.8))`,
-        cardSecondary: `linear-gradient(135deg, ${colors.secondary}20, rgba(30, 41, 59, 0.8))`,
-        cardTertiary: `linear-gradient(135deg, ${colors.tertiary}20, rgba(30, 41, 59, 0.8))`,
-        text: '#F8FAFC',
-        textSecondary: colors.primary,
-        textMuted: '#94A3B8',
-        iconBg: `${colors.primary}40`,
-      },
-      purple: {
-        bg: 'linear-gradient(135deg, #1E1B2E 0%, #2D1B3D 50%, #1E1B2E 100%)',
-        primary: colors.primary,
-        secondary: colors.secondary,
-        tertiary: colors.tertiary,
-        accent1: colors.accent1,
-        accent2: colors.accent2,
-        bgBlur1: `radial-gradient(circle, ${colors.primary}30, transparent)`,
-        bgBlur2: `radial-gradient(circle, ${colors.secondary}30, transparent)`,
-        bgBlur3: `radial-gradient(circle, ${colors.accent2}30, transparent)`,
-        cardPrimary: `linear-gradient(135deg, ${colors.primary}20, rgba(45, 27, 61, 0.8))`,
-        cardSecondary: `linear-gradient(135deg, ${colors.secondary}20, rgba(45, 27, 61, 0.8))`,
-        cardTertiary: `linear-gradient(135deg, ${colors.tertiary}20, rgba(45, 27, 61, 0.8))`,
-        text: '#F8FAFC',
-        textSecondary: colors.primary,
-        textMuted: '#A78BFA',
-        iconBg: `${colors.primary}40`,
-      },
-      peach: {
-        bg: 'linear-gradient(135deg, #2D1B1E 0%, #3D1E2D 50%, #2D1B1E 100%)',
-        primary: colors.primary,
-        secondary: colors.secondary,
-        tertiary: colors.tertiary,
-        accent1: colors.accent1,
-        accent2: colors.accent2,
-        bgBlur1: `radial-gradient(circle, ${colors.primary}30, transparent)`,
-        bgBlur2: `radial-gradient(circle, ${colors.tertiary}30, transparent)`,
-        bgBlur3: `radial-gradient(circle, ${colors.accent1}30, transparent)`,
-        cardPrimary: `linear-gradient(135deg, ${colors.primary}20, rgba(61, 30, 45, 0.8))`,
-        cardSecondary: `linear-gradient(135deg, ${colors.secondary}20, rgba(61, 30, 45, 0.8))`,
-        cardTertiary: `linear-gradient(135deg, ${colors.tertiary}20, rgba(61, 30, 45, 0.8))`,
-        text: '#F8FAFC',
-        textSecondary: colors.primary,
-        textMuted: '#F8B4D0',
-        iconBg: `${colors.primary}40`,
-      },
-      black: {
-        bg: 'linear-gradient(135deg, #0F172A 0%, #111827 50%, #020617 100%)',
-        primary: colors.primary,
-        secondary: colors.secondary,
-        tertiary: colors.tertiary,
-        accent1: colors.accent1,
-        accent2: colors.accent2,
-        bgBlur1: `radial-gradient(circle, ${colors.primary}18, transparent)`,
-        bgBlur2: `radial-gradient(circle, ${colors.secondary}18, transparent)`,
-        bgBlur3: `radial-gradient(circle, ${colors.accent2}18, transparent)`,
-        cardPrimary: `linear-gradient(135deg, ${colors.primary}18, rgba(15, 23, 42, 0.82))`,
-        cardSecondary: `linear-gradient(135deg, ${colors.secondary}16, rgba(15, 23, 42, 0.82))`,
-        cardTertiary: `linear-gradient(135deg, ${colors.tertiary}14, rgba(15, 23, 42, 0.82))`,
-        text: '#F8FAFC',
-        textSecondary: colors.primary,
-        textMuted: '#94A3B8',
-        iconBg: `${colors.primary}24`,
-      },
-    };
-
-    return themes[accent];
-  }
-
-  const themes = {
-    blue: {
-      bg: 'linear-gradient(135deg, #E6F0FF 0%, #F0F8FF 50%, #FFE8F0 100%)',
-      primary: colors.primary,
-      secondary: colors.secondary,
-      tertiary: colors.tertiary,
-      accent1: colors.accent1,
-      accent2: colors.accent2,
-      bgBlur1: `radial-gradient(circle, ${colors.primary}40, transparent)`,
-      bgBlur2: `radial-gradient(circle, ${colors.accent1}40, transparent)`,
-      bgBlur3: `radial-gradient(circle, ${colors.tertiary}40, transparent)`,
-      cardPrimary: `linear-gradient(135deg, ${colors.primary}30, rgba(255, 255, 255, 0.7))`,
-      cardSecondary: `linear-gradient(135deg, ${colors.secondary}30, rgba(255, 255, 255, 0.7))`,
-      cardTertiary: `linear-gradient(135deg, ${colors.tertiary}30, rgba(255, 255, 255, 0.7))`,
-      text: '#1E293B',
-      textSecondary: colors.primary,
-      textMuted: '#64748B',
-      iconBg: `${colors.primary}33`,
-    },
-    purple: {
-      bg: 'linear-gradient(135deg, #F3E8FF 0%, #FAF5FF 50%, #FFE8F0 100%)',
-      primary: colors.primary,
-      secondary: colors.secondary,
-      tertiary: colors.tertiary,
-      accent1: colors.accent1,
-      accent2: colors.accent2,
-      bgBlur1: `radial-gradient(circle, ${colors.primary}40, transparent)`,
-      bgBlur2: `radial-gradient(circle, ${colors.secondary}40, transparent)`,
-      bgBlur3: `radial-gradient(circle, ${colors.accent2}40, transparent)`,
-      cardPrimary: `linear-gradient(135deg, ${colors.primary}30, rgba(255, 255, 255, 0.7))`,
-      cardSecondary: `linear-gradient(135deg, ${colors.secondary}30, rgba(255, 255, 255, 0.7))`,
-      cardTertiary: `linear-gradient(135deg, ${colors.tertiary}30, rgba(255, 255, 255, 0.7))`,
-      text: '#1E293B',
-      textSecondary: colors.primary,
-      textMuted: '#64748B',
-      iconBg: `${colors.primary}33`,
-    },
-    peach: {
-      bg: 'linear-gradient(135deg, #FFF0E8 0%, #FFF8F0 50%, #F8E8FF 100%)',
-      primary: colors.primary,
-      secondary: colors.secondary,
-      tertiary: colors.tertiary,
-      accent1: colors.accent1,
-      accent2: colors.accent2,
-      bgBlur1: `radial-gradient(circle, ${colors.primary}40, transparent)`,
-      bgBlur2: `radial-gradient(circle, ${colors.tertiary}40, transparent)`,
-      bgBlur3: `radial-gradient(circle, ${colors.accent1}40, transparent)`,
-      cardPrimary: `linear-gradient(135deg, ${colors.primary}30, rgba(255, 255, 255, 0.7))`,
-      cardSecondary: `linear-gradient(135deg, ${colors.secondary}30, rgba(255, 255, 255, 0.7))`,
-      cardTertiary: `linear-gradient(135deg, ${colors.tertiary}30, rgba(255, 255, 255, 0.7))`,
-      text: '#1E293B',
-      textSecondary: colors.primary,
-      textMuted: '#64748B',
-      iconBg: `${colors.primary}33`,
-    },
-    black: {
-      bg: 'linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 50%, #E2E8F0 100%)',
-      primary: colors.primary,
-      secondary: colors.secondary,
-      tertiary: colors.tertiary,
-      accent1: colors.accent1,
-      accent2: colors.accent2,
-      bgBlur1: `radial-gradient(circle, ${colors.primary}18, transparent)`,
-      bgBlur2: `radial-gradient(circle, ${colors.secondary}18, transparent)`,
-      bgBlur3: `radial-gradient(circle, ${colors.accent2}18, transparent)`,
-      cardPrimary: `linear-gradient(135deg, ${colors.primary}14, rgba(255, 255, 255, 0.82))`,
-      cardSecondary: `linear-gradient(135deg, ${colors.secondary}12, rgba(255, 255, 255, 0.84))`,
-      cardTertiary: `linear-gradient(135deg, ${colors.tertiary}10, rgba(255, 255, 255, 0.86))`,
-      text: '#111827',
-      textSecondary: colors.primary,
-      textMuted: '#475569',
-      iconBg: `${colors.primary}18`,
-    },
-  };
-
-  return themes[accent];
-};
-
-function getNextDateForDay(targetDay: number) {
-  const today = new Date();
-  const currentDay = today.getDay();
-  const diff = (targetDay - currentDay + 7) % 7;
-  return format(addDays(today, diff), 'yyyy-MM-dd');
-}
-
-function addMinutesToTime(time: string, minutesToAdd: number) {
-  const [hours, minutes] = time.split(':').map(Number);
-  const totalMinutes = hours * 60 + minutes + minutesToAdd;
-  const normalized = ((totalMinutes % 1440) + 1440) % 1440;
-  const nextHours = Math.floor(normalized / 60);
-  const nextMinutes = normalized % 60;
-  return `${String(nextHours).padStart(2, '0')}:${String(nextMinutes).padStart(2, '0')}`;
-}
-
-function getHealthScheduleRows(): HealthScheduleRow[] {
-  try {
-    const storedPlans = localStorage.getItem('health_week_plans');
-    const storedCurrentWeek = Number(localStorage.getItem('health_current_week') || '1');
-    const storedTimes = JSON.parse(localStorage.getItem('planner_health_schedule_times') || '{}') as Record<string, string>;
-    const weekPlans: WeekPlan[] = storedPlans ? JSON.parse(storedPlans) : [];
-    const orderedPlans = [...weekPlans].sort((a, b) => {
-      const aOffset = (a.weekNumber - storedCurrentWeek + 4) % 4;
-      const bOffset = (b.weekNumber - storedCurrentWeek + 4) % 4;
-      return aOffset - bOffset;
-    });
-
-    return DAYS_OF_WEEK.map((label, dayOfWeek) => {
-      const plans = orderedPlans.flatMap((plan, index) => {
-        const routine = plan.days.find(day => day.dayOfWeek === dayOfWeek);
-        if (!routine || routine.isRestDay || routine.exercises.length === 0) return [];
-        return [{
-          weekNumber: plan.weekNumber,
-          weekOffset: index,
-          routineName: routine.routineName || `${label}요일 운동`,
-          summary: routine.exercises.slice(0, 3).map(exercise => exercise.name).join(', '),
-        }];
-      });
-      const planned = plans.length > 0;
-      const summary = planned
-        ? plans.map(plan => `${plan.weekNumber}주차 ${plan.summary}`).slice(0, 2).join(' · ')
-        : '아직 운동 루틴이 없습니다.';
-
-      return {
-        dayOfWeek,
-        label,
-        planned,
-        selected: planned,
-        time: storedTimes[String(dayOfWeek)] || '19:00',
-        routineName: plans[0]?.routineName || `${label}요일 운동`,
-        summary,
-        plans,
-      };
-    });
-  } catch {
-    return DAYS_OF_WEEK.map((label, dayOfWeek) => ({
-      dayOfWeek,
-      label,
-      planned: false,
-      selected: false,
-      time: '19:00',
-      routineName: `${label}요일 운동`,
-      summary: '아직 운동 루틴이 없습니다.',
-      plans: [],
-    }));
-  }
+  onNavigate: (tab: 'calendar' | 'notes' | 'study' | 'habits') => void;
 }
 
 export function HomeTab({ onNavigate }: HomeTabProps) {
-  const { events, notes, studySessions, settings, todayBriefing, addEvent, categories } = usePlanner();
-  const [showHealthScheduler, setShowHealthScheduler] = useState(false);
-  const [healthScheduleRows, setHealthScheduleRows] = useState<HealthScheduleRow[]>(() => getHealthScheduleRows());
+  const {
+    events,
+    categories,
+    notes,
+    settings,
+    todayBriefing,
+    refreshBriefing,
+    habits,
+    habitRecords,
+    toggleHabitRecord,
+    studySessions,
+  } = usePlanner();
+  const theme = getPlannerTheme(settings);
 
-  const theme = useMemo(() => {
-    const accent = settings.isDarkMode ? settings.glassAccentDark || 'blue' : settings.glassAccent || 'blue';
-    return getGlassTheme(accent, settings.isDarkMode || false);
-  }, [settings.glassAccent, settings.glassAccentDark, settings.isDarkMode]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const today = new Date();
   const todayStr = format(today, 'yyyy-MM-dd');
-  const todayEvents = events.filter(e => e.date === todayStr);
-  const upcomingEvents = events
-    .filter(e => e.date >= todayStr)
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(0, 5);
 
-  const currentHour = new Date().getHours();
-  const greeting = currentHour < 12 ? 'Good Morning' : currentHour < 18 ? 'Good Afternoon' : 'Good Evening';
-  const GreetingIcon = currentHour < 18 ? Sun : Moon;
-  const aiOneLiner = todayBriefing?.split(/[.!?]\s/)[0] || '오늘도 작은 루틴 하나가 하루의 결을 바꿉니다.';
-  const nameSuffix = settings.name ? `, ${settings.name}` : '';
-  const cardBackground = settings.isDarkMode
-    ? `linear-gradient(135deg, ${theme.primary}25, ${theme.secondary}20)`
-    : `linear-gradient(135deg, ${theme.primary}20, rgba(255, 255, 255, 0.9))`;
-  const cardBorderColor = settings.isDarkMode ? `${theme.primary}40` : 'rgba(255, 255, 255, 0.4)';
-  const cardBoxShadow = settings.isDarkMode ? `0 8px 32px ${theme.primary}30` : '0 8px 32px rgba(0, 0, 0, 0.08)';
-
-  const refreshHealthSchedule = () => {
-    setHealthScheduleRows(getHealthScheduleRows());
+  const handleRefreshBriefing = async () => {
+    setIsRefreshing(true);
+    await refreshBriefing();
+    setIsRefreshing(false);
   };
 
-  const updateHealthRow = (dayOfWeek: number, updates: Partial<HealthScheduleRow>) => {
-    setHealthScheduleRows(current =>
-      current.map(row => (row.dayOfWeek === dayOfWeek ? { ...row, ...updates } : row)),
+  // 오늘 + 내일 일정 (최대 5개)
+  const upcomingEvents = useMemo(() => {
+    const tomorrow = format(addDays(today, 1), 'yyyy-MM-dd');
+    return events
+      .filter(e => e.date === todayStr || e.date === tomorrow)
+      .sort((a, b) => {
+        if (a.date !== b.date) return a.date.localeCompare(b.date);
+        return a.startTime.localeCompare(b.startTime);
+      })
+      .slice(0, 6);
+  }, [events, todayStr]);
+
+  // 오늘의 습관
+  const todayHabits = useMemo(() => {
+    const todayDayOfWeek = today.getDay();
+    return habits.filter(h =>
+      h.targetDays.length === 0 || h.targetDays.includes(todayDayOfWeek)
     );
+  }, [habits, today]);
+
+  const completedHabitIds = useMemo(
+    () => new Set(habitRecords.filter(r => r.date === todayStr).map(r => r.habitId)),
+    [habitRecords, todayStr]
+  );
+
+  const completedHabitsCount = todayHabits.filter(h => completedHabitIds.has(h.id)).length;
+
+  // 학습 통계
+  const currentStreak = studySessions[studySessions.length - 1]?.streak || 0;
+  const todayStudied = studySessions.find(s => s.date === todayStr)?.cardsStudied || 0;
+
+  // 최근 메모
+  const recentNote = [...notes].sort(
+    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+  )[0];
+
+  const getCategoryColor = (categoryId: string) =>
+    categories.find(c => c.id === categoryId)?.color || '#6b7280';
+  const getCategoryEmoji = (categoryId: string) =>
+    categories.find(c => c.id === categoryId)?.emoji || '📌';
+
+  const getEventDateLabel = (date: string) => {
+    if (date === todayStr) return '오늘';
+    if (date === format(addDays(today, 1), 'yyyy-MM-dd')) return '내일';
+    return format(new Date(date), 'M/d', { locale: ko });
   };
 
-  const handleRegisterHealthEvents = async () => {
-    const selectedRows = healthScheduleRows.filter(row => row.selected);
-    if (selectedRows.length === 0) {
-      toast.error('등록할 요일을 하나 이상 선택해주세요.');
-      return;
-    }
-
-    const workoutCategoryId = categories.find(category => category.name === '운동')?.id || categories[0]?.id || '';
-    const timeMap = Object.fromEntries(healthScheduleRows.map(row => [String(row.dayOfWeek), row.time]));
-    localStorage.setItem('planner_health_schedule_times', JSON.stringify(timeMap));
-
-    const today = new Date();
-    const currentWeekStart = new Date(today);
-    currentWeekStart.setHours(0, 0, 0, 0);
-    currentWeekStart.setDate(currentWeekStart.getDate() - currentWeekStart.getDay());
-
-    for (const row of selectedRows) {
-      const plansToRegister = row.plans.length > 0 ? row.plans : [{
-        weekNumber: 1,
-        weekOffset: 0,
-        routineName: row.routineName,
-        summary: row.summary,
-      }];
-
-      for (const plan of plansToRegister) {
-        const targetDate = addDays(currentWeekStart, plan.weekOffset * 7 + row.dayOfWeek);
-        await addEvent({
-          title: plan.routineName,
-          date: format(targetDate, 'yyyy-MM-dd'),
-          startTime: row.time,
-          endTime: addMinutesToTime(row.time, 90),
-          categoryId: workoutCategoryId,
-          memo: row.planned ? `헬스 루틴 연동 · ${plan.weekNumber}주차 · ${plan.summary}` : '헬스 일정 등록',
-        });
-      }
-    }
-
-    const totalRegistered = selectedRows.reduce((sum, row) => sum + Math.max(1, row.plans.length), 0);
-    toast.success(`${totalRegistered}개의 운동 일정이 캘린더에 등록되었습니다.`);
-    setShowHealthScheduler(false);
-  };
+  const todayCount = events.filter(e => e.date === todayStr).length;
 
   return (
-    <div className="relative min-h-full overflow-hidden rounded-[28px]" style={{ background: theme.bg }}>
-      <div className="absolute left-10 top-6 h-96 w-96 rounded-full opacity-30 blur-3xl" style={{ background: theme.bgBlur1 }} />
-      <div className="absolute bottom-20 right-10 w-96 h-96 rounded-full opacity-30 blur-3xl" style={{ background: theme.bgBlur2 }} />
-      <div className="absolute top-1/2 left-1/2 h-96 w-96 -translate-x-1/2 -translate-y-1/2 rounded-full opacity-20 blur-3xl" style={{ background: theme.bgBlur3 }} />
-
-      <div className="relative mx-auto max-w-[1180px] px-2 pb-3 pt-2 md:px-5 md:pt-4">
-        <div className="mb-3 md:mb-5 grid grid-cols-1 gap-3 md:gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-          <div
-            className="rounded-2xl md:rounded-[28px] border px-3 md:px-5 py-3 md:py-5"
-            style={{
-              background: settings.isDarkMode
-                ? `linear-gradient(135deg, ${theme.accent1}20, ${theme.primary}16)`
-                : `linear-gradient(135deg, rgba(255, 255, 255, 0.92), ${theme.accent1}18)`,
-              backdropFilter: 'blur(20px)',
-              borderColor: settings.isDarkMode ? `${theme.accent1}36` : 'rgba(255,255,255,0.5)',
-              boxShadow: settings.isDarkMode ? `0 10px 32px ${theme.accent1}24` : `0 10px 32px ${theme.accent1}18`,
-            }}
-          >
-            <div className="mb-2 md:mb-3 flex items-center gap-1.5 md:gap-2">
-              <Sparkles className="h-3 w-3 md:h-4 md:w-4" style={{ color: theme.accent1 }} />
-              <span className="text-[10px] md:text-xs font-semibold uppercase tracking-[0.24em]" style={{ color: theme.textMuted }}>
-                Today&apos;s Note
-              </span>
-            </div>
-            <p className="text-sm md:text-base font-medium leading-5 md:leading-8" style={{ color: theme.text }}>
-              {aiOneLiner}
-            </p>
-          </div>
-
-          <div
-            className="rounded-2xl md:rounded-[28px] border px-3 md:px-5 py-3 md:py-5"
-            style={{
-              background: cardBackground,
-              backdropFilter: 'blur(20px)',
-              borderColor: cardBorderColor,
-              boxShadow: cardBoxShadow,
-            }}
-          >
-            <div className="mb-1.5 md:mb-2 flex items-center gap-2 md:gap-3">
-              <GreetingIcon className="h-4 w-4 md:h-5 md:w-5" style={{ color: theme.primary }} />
-              <h1 className="text-lg md:text-2xl md:text-[30px] font-medium" style={{ color: theme.text }}>
-                {greeting}{nameSuffix}
-              </h1>
-            </div>
-            <p className="text-xs md:text-sm" style={{ color: settings.isDarkMode ? theme.secondary : theme.textMuted }}>
-              {format(today, 'MMMM d, yyyy · EEEE', { locale: ko })}
-            </p>
-          </div>
-
-          <div
-            className="rounded-[28px] border px-5 py-5"
-            style={{
-              background: cardBackground,
-              backdropFilter: 'blur(20px)',
-              borderColor: cardBorderColor,
-              boxShadow: cardBoxShadow,
-            }}
-          >
-            <div className="mb-2 flex items-center gap-3">
-              <GreetingIcon className="h-5 w-5" style={{ color: theme.primary }} />
-              <h1 className="text-2xl font-medium md:text-[30px]" style={{ color: theme.text }}>
-                {greeting}{nameSuffix}
-              </h1>
-            </div>
-            <p className="text-sm" style={{ color: settings.isDarkMode ? theme.secondary : theme.textMuted }}>
-              {format(today, 'MMMM d, yyyy · EEEE', { locale: ko })}
-            </p>
-          </div>
-        </div>
-
-        <div className="mb-3 md:mb-5 grid grid-cols-4 gap-2 md:gap-3 xl:grid-cols-4">
-          <button
-            onClick={() => onNavigate('calendar')}
-            className="group flex flex-col rounded-2xl md:rounded-3xl border p-2.5 md:p-4 text-left transition-all hover:scale-[1.02] md:hover:scale-[1.03]"
-            style={{
-              background: settings.isDarkMode ? `linear-gradient(135deg, ${theme.primary}30, ${theme.primary}15)` : theme.cardPrimary,
-              backdropFilter: 'blur(20px)',
-              borderColor: settings.isDarkMode ? `${theme.primary}50` : 'rgba(255, 255, 255, 0.4)',
-              boxShadow: `0 4px 16px ${theme.primary}20`,
-            }}
-          >
-            <div className="flex items-center gap-1.5 md:gap-2 mb-1.5 md:mb-3">
-              <div className="rounded-lg md:rounded-2xl p-1.5 md:p-2.5" style={{ background: settings.isDarkMode ? `${theme.primary}50` : theme.iconBg }}>
-                <Calendar className="h-3.5 w-3.5 md:h-5 md:w-5" style={{ color: theme.primary }} />
-              </div>
-              <span className="text-[10px] md:text-sm font-medium" style={{ color: theme.textMuted }}>Events</span>
-            </div>
-            <div className="text-xl md:text-3xl font-bold" style={{ color: theme.text }}>{todayEvents.length}</div>
-            <div className="text-[9px] md:text-xs" style={{ color: theme.textMuted }}>today</div>
-          </button>
-
-          <button
-            onClick={() => onNavigate('notes')}
-            className="group flex flex-col rounded-2xl md:rounded-3xl border p-2.5 md:p-4 text-left transition-all hover:scale-[1.02] md:hover:scale-[1.03]"
-            style={{
-              background: settings.isDarkMode ? `linear-gradient(135deg, ${theme.secondary}30, ${theme.secondary}15)` : theme.cardSecondary,
-              backdropFilter: 'blur(20px)',
-              borderColor: settings.isDarkMode ? `${theme.secondary}50` : 'rgba(255, 255, 255, 0.4)',
-              boxShadow: `0 4px 16px ${theme.secondary}20`,
-            }}
-          >
-            <div className="flex items-center gap-1.5 md:gap-2 mb-1.5 md:mb-3">
-              <div className="rounded-lg md:rounded-2xl p-1.5 md:p-2.5" style={{ background: settings.isDarkMode ? `${theme.secondary}50` : theme.iconBg }}>
-                <FileText className="h-3.5 w-3.5 md:h-5 md:w-5" style={{ color: theme.secondary }} />
-              </div>
-              <span className="text-[10px] md:text-sm font-medium" style={{ color: theme.textMuted }}>Notes</span>
-            </div>
-            <div className="text-xl md:text-3xl font-bold" style={{ color: theme.text }}>{notes.length}</div>
-            <div className="text-[9px] md:text-xs" style={{ color: theme.textMuted }}>saved</div>
-          </button>
-
-          <button
-            onClick={() => onNavigate('study')}
-            className="group flex flex-col rounded-2xl md:rounded-3xl border p-2.5 md:p-4 text-left transition-all hover:scale-[1.02] md:hover:scale-[1.03]"
-            style={{
-              background: settings.isDarkMode ? `linear-gradient(135deg, ${theme.tertiary}30, ${theme.tertiary}15)` : theme.cardTertiary,
-              backdropFilter: 'blur(20px)',
-              borderColor: settings.isDarkMode ? `${theme.tertiary}50` : 'rgba(255, 255, 255, 0.4)',
-              boxShadow: `0 4px 16px ${theme.tertiary}20`,
-            }}
-          >
-            <div className="flex items-center gap-1.5 md:gap-2 mb-1.5 md:mb-3">
-              <div className="rounded-lg md:rounded-2xl p-1.5 md:p-2.5" style={{ background: settings.isDarkMode ? `${theme.tertiary}50` : theme.iconBg }}>
-                <BookOpen className="h-3.5 w-3.5 md:h-5 md:w-5" style={{ color: theme.tertiary }} />
-              </div>
-              <span className="text-[10px] md:text-sm font-medium" style={{ color: theme.textMuted }}>Streak</span>
-            </div>
-            <div className="text-xl md:text-3xl font-bold" style={{ color: theme.text }}>{studySessions[studySessions.length - 1]?.streak || 0}</div>
-            <div className="text-[9px] md:text-xs" style={{ color: theme.textMuted }}>days</div>
-          </button>
-
-          <button
-            onClick={() => {
-              refreshHealthSchedule();
-              setShowHealthScheduler(true);
-            }}
-            className="group flex h-full flex-col rounded-3xl border p-4 text-left transition-all hover:scale-[1.03] md:p-5"
-            style={{
-              background: settings.isDarkMode
-                ? `linear-gradient(135deg, ${theme.accent1}28, ${theme.primary}18)`
-                : `linear-gradient(135deg, ${theme.accent1}24, rgba(255,255,255,0.82))`,
-              backdropFilter: 'blur(20px)',
-              borderColor: settings.isDarkMode ? `${theme.accent1}46` : 'rgba(255,255,255,0.4)',
-              boxShadow: `0 8px 32px ${theme.accent1}22`,
-            }}
-          >
-            <div className="mb-4 flex min-h-[52px] items-start gap-3">
-              <div className="rounded-2xl p-2.5" style={{ background: settings.isDarkMode ? `${theme.accent1}42` : `${theme.accent1}26` }}>
-                <Dumbbell className="h-5 w-5" style={{ color: theme.accent1 }} />
-              </div>
-              <span className="pt-1 text-sm font-medium leading-5" style={{ color: theme.textMuted }}>Health Schedule</span>
-            </div>
-            <div className="mb-1 text-lg font-bold md:text-xl" style={{ color: theme.text }}>헬스 일정 등록</div>
-            <div className="text-xs leading-6" style={{ color: theme.textMuted }}>
-              루틴이 있는 요일은 자동 체크되고, 시간 지정 후 캘린더에 반복 일정으로 등록됩니다.
-            </div>
-          </button>
-        </div>
-
-        {todayBriefing && (
-          <div
-            className="mb-5 rounded-3xl border p-5"
-            style={{
-              background: settings.isDarkMode
-                ? `linear-gradient(135deg, ${theme.accent1}25, ${theme.accent2}20)`
-                : `linear-gradient(135deg, ${theme.accent1}20, rgba(255, 255, 255, 0.9))`,
-              backdropFilter: 'blur(20px)',
-              borderColor: settings.isDarkMode ? `${theme.accent1}40` : 'rgba(255, 255, 255, 0.4)',
-              boxShadow: settings.isDarkMode ? `0 8px 32px ${theme.accent1}30` : `0 8px 32px ${theme.accent1}1A`,
-            }}
-          >
-            <div className="mb-3 flex items-center gap-2">
-              <Heart className="h-5 w-5" style={{ color: theme.accent1 }} />
-              <span className="text-sm font-medium" style={{ color: theme.textMuted }}>Daily Inspiration</span>
-            </div>
-            <p className="text-base leading-relaxed" style={{ color: theme.text }}>{todayBriefing}</p>
-          </div>
-        )}
-
+    <div className="mx-auto max-w-[1360px] p-3 md:p-5 space-y-4">
+      {/* 날짜 헤더 */}
+      <div className="flex items-end justify-between">
         <div>
-          <div className="mb-4 flex items-center justify-between px-2">
-            <h2 className="text-xl font-semibold" style={{ color: theme.text }}>오늘의 일정</h2>
+          <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: theme.textMuted }}>
+            {format(today, 'EEEE', { locale: ko })}
+          </p>
+          <h1 className="text-3xl md:text-4xl font-black leading-none" style={{ color: theme.text }}>
+            {format(today, 'M월 d일')}
+          </h1>
+          {todayCount > 0 && (
+            <p className="text-sm mt-1 font-medium" style={{ color: theme.textSecondary }}>
+              오늘 일정 {todayCount}개
+            </p>
+          )}
+        </div>
+        <motion.button
+          whileTap={{ scale: 0.95 }}
+          onClick={handleRefreshBriefing}
+          disabled={isRefreshing}
+          className="flex items-center gap-1.5 rounded-2xl px-3 py-2 text-xs font-semibold border transition-all"
+          style={{
+            background: theme.panelBackground,
+            borderColor: theme.panelBorder,
+            color: theme.textMuted,
+          }}
+        >
+          <motion.div animate={isRefreshing ? { rotate: 360 } : {}} transition={{ duration: 0.8, repeat: isRefreshing ? Infinity : 0, ease: 'linear' }}>
+            <RefreshCw className="h-3.5 w-3.5" />
+          </motion.div>
+          AI 브리핑
+        </motion.button>
+      </div>
+
+      {/* AI 브리핑 카드 */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="rounded-2xl border p-4 md:p-5"
+        style={{
+          background: `linear-gradient(135deg, ${theme.primary}18, ${theme.accent1}10)`,
+          borderColor: `${theme.primary}30`,
+        }}
+      >
+        <div className="flex items-start gap-3">
+          <div
+            className="rounded-xl p-2 shrink-0"
+            style={{ background: `${theme.primary}20` }}
+          >
+            <Sparkles className="h-4 w-4" style={{ color: theme.primary }} />
+          </div>
+          <p className="text-sm leading-relaxed flex-1" style={{ color: theme.textSecondary }}>
+            {todayBriefing}
+          </p>
+        </div>
+      </motion.div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* 오늘의 일정 */}
+        <div
+          className="rounded-2xl border p-4"
+          style={{ background: theme.panelBackground, borderColor: theme.panelBorder }}
+        >
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4 w-4" style={{ color: theme.primary }} />
+              <h2 className="text-sm font-bold" style={{ color: theme.text }}>다가오는 일정</h2>
+            </div>
             <button
               onClick={() => onNavigate('calendar')}
-              className="flex items-center gap-1 text-sm font-medium transition-all hover:gap-2"
+              className="flex items-center gap-0.5 text-xs font-semibold transition-opacity hover:opacity-70"
               style={{ color: theme.primary }}
             >
-              전체 보기
-              <ChevronRight className="h-4 w-4" />
+              더보기 <ChevronRight className="h-3 w-3" />
             </button>
           </div>
 
-          <div className="space-y-3">
-            {todayEvents.length === 0 ? (
-              <div
-                className="rounded-3xl border p-12 text-center"
-                style={{
-                  background: settings.isDarkMode ? `linear-gradient(135deg, ${theme.primary}15, ${theme.secondary}10)` : 'rgba(255, 255, 255, 0.6)',
-                  backdropFilter: 'blur(20px)',
-                  borderColor: settings.isDarkMode ? `${theme.primary}30` : 'rgba(255, 255, 255, 0.4)',
-                }}
+          {upcomingEvents.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-6 text-center">
+              <Calendar className="h-8 w-8 mb-2 opacity-20" style={{ color: theme.textMuted }} />
+              <p className="text-xs" style={{ color: theme.textMuted }}>예정된 일정이 없어요</p>
+              <button
+                onClick={() => onNavigate('calendar')}
+                className="mt-2 text-xs font-semibold"
+                style={{ color: theme.primary }}
               >
-                <p className="text-base" style={{ color: theme.textMuted }}>오늘 일정이 없어요</p>
-              </div>
-            ) : (
-              todayEvents
-                .sort((a, b) => a.startTime.localeCompare(b.startTime))
-                .map((event, index) => {
-                  const [hour] = event.startTime.split(':').map(Number);
-                  const now = new Date();
-                  const currentMinutes = now.getHours() * 60 + now.getMinutes();
-                  const eventMinutes = hour * 60;
-                  const isPast = eventMinutes < currentMinutes;
-                  const isCurrent = !isPast && eventMinutes <= currentMinutes + 30;
-                  
-                  return (
-                    <div
-                      key={event.id}
-                      className="group rounded-2xl border p-4 text-left transition-all"
+                일정 추가하기
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {upcomingEvents.map(event => (
+                <motion.div
+                  key={event.id}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="flex items-center gap-3 rounded-xl p-2.5 transition-all"
+                  style={{ background: theme.hoverBackground }}
+                >
+                  <div
+                    className="h-8 w-1 rounded-full shrink-0"
+                    style={{ background: getCategoryColor(event.categoryId) }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold truncate" style={{ color: theme.text }}>
+                      {getCategoryEmoji(event.categoryId)} {event.title}
+                    </p>
+                    <p className="text-xs mt-0.5" style={{ color: theme.textMuted }}>
+                      {getEventDateLabel(event.date)} · {event.startTime}–{event.endTime}
+                    </p>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 오늘의 습관 */}
+        <div
+          className="rounded-2xl border p-4"
+          style={{ background: theme.panelBackground, borderColor: theme.panelBorder }}
+        >
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Zap className="h-4 w-4" style={{ color: theme.accent1 || theme.primary }} />
+              <h2 className="text-sm font-bold" style={{ color: theme.text }}>오늘의 습관</h2>
+            </div>
+            <div className="flex items-center gap-2">
+              {todayHabits.length > 0 && (
+                <span
+                  className="text-xs font-bold px-2 py-0.5 rounded-full"
+                  style={{
+                    background: `${theme.primary}18`,
+                    color: theme.primary,
+                  }}
+                >
+                  {completedHabitsCount}/{todayHabits.length}
+                </span>
+              )}
+              <button
+                onClick={() => onNavigate('habits')}
+                className="flex items-center gap-0.5 text-xs font-semibold hover:opacity-70 transition-opacity"
+                style={{ color: theme.primary }}
+              >
+                관리 <ChevronRight className="h-3 w-3" />
+              </button>
+            </div>
+          </div>
+
+          {todayHabits.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-6 text-center">
+              <Zap className="h-8 w-8 mb-2 opacity-20" style={{ color: theme.textMuted }} />
+              <p className="text-xs" style={{ color: theme.textMuted }}>습관을 추가해보세요</p>
+              <button
+                onClick={() => onNavigate('habits')}
+                className="mt-2 text-xs font-semibold"
+                style={{ color: theme.primary }}
+              >
+                습관 만들기
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {todayHabits.slice(0, 4).map(habit => {
+                const done = completedHabitIds.has(habit.id);
+                return (
+                  <motion.button
+                    key={habit.id}
+                    whileTap={{ scale: 0.97 }}
+                    onClick={() => toggleHabitRecord(habit.id, todayStr)}
+                    className="flex w-full items-center gap-3 rounded-xl p-2.5 text-left transition-all"
+                    style={{ background: done ? `${habit.color}12` : theme.hoverBackground }}
+                  >
+                    {done ? (
+                      <CheckCircle2 className="h-5 w-5 shrink-0" style={{ color: habit.color }} />
+                    ) : (
+                      <Circle className="h-5 w-5 shrink-0 opacity-30" style={{ color: habit.color }} />
+                    )}
+                    <span className="text-sm">{habit.emoji}</span>
+                    <span
+                      className="text-sm font-medium flex-1 truncate"
                       style={{
-                        background: isCurrent 
-                          ? `linear-gradient(135deg, ${theme.primary}25, ${theme.secondary}15)` 
-                          : isPast 
-                            ? settings.isDarkMode 
-                              ? `${theme.primary}08` 
-                              : 'rgba(255, 255, 255, 0.4)'
-                            : settings.isDarkMode 
-                              ? `linear-gradient(135deg, ${theme.secondary}20, ${theme.primary}10)` 
-                              : 'rgba(255, 255, 255, 0.7)',
-                        backdropFilter: 'blur(20px)',
-                        borderColor: isCurrent ? theme.primary : settings.isDarkMode ? `${theme.secondary}40` : 'rgba(255, 255, 255, 0.4)',
-                        boxShadow: settings.isDarkMode ? `0 4px 16px ${theme.secondary}20` : '0 4px 16px rgba(0, 0, 0, 0.06)',
-                        opacity: isPast ? 0.6 : 1,
+                        color: done ? theme.textMuted : theme.text,
+                        textDecoration: done ? 'line-through' : 'none',
                       }}
                     >
-                      <div className="flex items-center gap-4">
-                        <div className="flex flex-col items-center" style={{ minWidth: '50px' }}>
-                          <div className="text-lg font-bold" style={{ color: isCurrent ? theme.primary : theme.text }}>
-                            {event.startTime.split(':')[0]}
-                          </div>
-                          <div className="text-xs" style={{ color: theme.textMuted }}>
-                            {event.startTime.split(':')[1]}
-                          </div>
-                        </div>
-
-                        <div className="h-10 w-0.5 rounded-full" style={{ background: isCurrent ? theme.primary : theme.textMuted }} />
-
-                        <div className="flex-1">
-                          <h3 className="text-base font-semibold" style={{ color: theme.text }}>{event.title}</h3>
-                          <p className="text-sm" style={{ color: theme.textMuted }}>{event.endTime}까지</p>
-                        </div>
-
-                        {isCurrent && (
-                          <div 
-                            className="rounded-full px-3 py-1 text-xs font-medium"
-                            style={{ background: theme.primary, color: '#fff' }}
-                          >
-                            지금
-                          </div>
-                        )}
-                        {isPast && (
-                          <div 
-                            className="rounded-full px-3 py-1 text-xs font-medium"
-                            style={{ background: theme.textMuted, color: '#fff' }}
-                          >
-                            완료
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })
-            )}
-          </div>
+                      {habit.name}
+                    </span>
+                  </motion.button>
+                );
+              })}
+              {todayHabits.length > 4 && (
+                <p className="text-center text-xs py-1" style={{ color: theme.textMuted }}>
+                  +{todayHabits.length - 4}개 더
+                </p>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
-      <AnimatePresence>
-        {showHealthScheduler && (
-          <motion.div
-            className="fixed inset-0 z-50 flex justify-end p-3 md:p-4"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-          >
-            <motion.div
-              className="relative flex max-w-5xl flex-col rounded-[32px] border overflow-hidden max-h-[calc(100vh-48px)]"
-              initial={{ x: '100%', opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ x: '100%', opacity: 0 }}
-              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-            style={{
-              background: settings.isDarkMode ? 'rgba(15, 23, 42, 0.94)' : 'rgba(255, 255, 255, 0.94)',
-              backdropFilter: 'blur(24px)',
-              borderColor: settings.isDarkMode ? `${theme.primary}28` : 'rgba(255,255,255,0.6)',
-              boxShadow: '0 24px 80px rgba(15,23,42,0.2)',
-            }}
-          >
-            <div className="px-5 py-4 flex-shrink-0">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="mb-2 flex items-center gap-2">
-                    <Dumbbell className="h-5 w-5" style={{ color: theme.accent1 }} />
-                    <span className="text-xs font-semibold uppercase tracking-[0.24em]" style={{ color: theme.textMuted }}>
-                      Health To Planner
-                    </span>
-                  </div>
-                  <h3 className="text-xl font-semibold" style={{ color: theme.text }}>운동 일정 등록</h3>
-                  <p className="mt-1 text-xs leading-5" style={{ color: theme.textMuted }}>
-                    운동 일정이 있는 요일은 자동 체크되어 있습니다.
-                  </p>
-                </div>
-                <button onClick={() => setShowHealthScheduler(false)} className="rounded-2xl p-2" style={{ background: theme.iconBg }}>
-                  <X className="h-5 w-5" style={{ color: theme.textSecondary }} />
-                </button>
-              </div>
+      {/* 학습 & 메모 요약 */}
+      <div className="grid grid-cols-2 gap-4">
+        {/* 학습 현황 */}
+        <motion.button
+          whileTap={{ scale: 0.98 }}
+          onClick={() => onNavigate('study')}
+          className="rounded-2xl border p-4 text-left transition-all hover:opacity-90"
+          style={{ background: theme.panelBackground, borderColor: theme.panelBorder }}
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <BookOpen className="h-4 w-4" style={{ color: theme.secondary }} />
+            <span className="text-sm font-bold" style={{ color: theme.text }}>학습</span>
+          </div>
+          <div className="space-y-1">
+            <div>
+              <span className="text-2xl font-black" style={{ color: theme.text }}>{currentStreak}</span>
+              <span className="text-xs ml-1 font-medium" style={{ color: theme.textMuted }}>일 연속</span>
             </div>
+            <p className="text-xs" style={{ color: theme.textMuted }}>
+              오늘 {todayStudied}장 학습
+            </p>
+          </div>
+          <div className="mt-3 flex items-center gap-1 text-xs font-semibold" style={{ color: theme.primary }}>
+            학습 시작 <ChevronRight className="h-3 w-3" />
+          </div>
+        </motion.button>
 
-            <div className="flex-1 overflow-y-auto px-5 min-h-0">
-              <div className="space-y-2 pb-3">
-                {healthScheduleRows.map(row => (
-                  <div
-                    key={row.dayOfWeek}
-                    className="grid grid-cols-[auto_72px_minmax(0,1fr)_140px] items-center gap-2 rounded-2xl border px-3 py-2.5"
-                    style={{
-                      background: row.selected
-                        ? settings.isDarkMode
-                          ? `linear-gradient(135deg, ${theme.primary}18, ${theme.accent1}14)`
-                          : `linear-gradient(135deg, rgba(255,255,255,0.9), ${theme.primary}12)`
-                        : settings.isDarkMode
-                        ? 'rgba(15,23,42,0.6)'
-                        : 'rgba(255,255,255,0.72)',
-                      borderColor: row.selected ? `${theme.primary}36` : 'rgba(148,163,184,0.16)',
-                    }}
-                  >
-                    <button
-                      onClick={() => updateHealthRow(row.dayOfWeek, { selected: !row.selected })}
-                      className="flex items-center justify-center"
-                    >
-                      <CheckCircle2
-                        className="h-5 w-5"
-                        style={{ color: row.selected ? theme.primary : settings.isDarkMode ? '#475569' : '#CBD5E1' }}
-                      />
-                    </button>
-
-                    <div className="text-sm font-semibold" style={{ color: theme.text }}>
-                      {row.label}요일
-                    </div>
-
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="truncate text-sm font-semibold" style={{ color: theme.textSecondary }}>{row.routineName}</span>
-                        {row.planned && (
-                          <span
-                            className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
-                            style={{ background: settings.isDarkMode ? `${theme.primary}22` : `${theme.primary}18`, color: theme.primary }}
-                          >
-                            {row.plans.length}주차
-                          </span>
-                        )}
-                      </div>
-                      <div className="mt-1 text-xs" style={{ color: theme.textMuted }}>
-                        {row.plans.length > 0 ? (
-                          <span className="flex flex-wrap gap-1">
-                            {row.plans.map((plan, idx) => (
-                              <span key={idx} style={{ color: theme.primary }}>{plan.weekNumber}주차</span>
-                            ))}
-                          </span>
-                        ) : (
-                          <span className="truncate">{row.summary}</span>
-                        )}
-                      </div>
-                    </div>
-
-                    <input
-                      type="time"
-                      value={row.time}
-                      onChange={event => updateHealthRow(row.dayOfWeek, { time: event.target.value })}
-                      className="w-full rounded-xl border px-3 py-2 text-sm outline-none"
-                      style={{
-                        background: settings.isDarkMode ? 'rgba(15,23,42,0.82)' : 'rgba(255,255,255,0.88)',
-                        color: theme.text,
-                        borderColor: 'rgba(148,163,184,0.2)',
-                      }}
-                    />
-                  </div>
-                ))}
-              </div>
+        {/* 메모 */}
+        <motion.button
+          whileTap={{ scale: 0.98 }}
+          onClick={() => onNavigate('notes')}
+          className="rounded-2xl border p-4 text-left transition-all hover:opacity-90"
+          style={{ background: theme.panelBackground, borderColor: theme.panelBorder }}
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <FileText className="h-4 w-4" style={{ color: theme.tertiary }} />
+            <span className="text-sm font-bold" style={{ color: theme.text }}>메모</span>
+          </div>
+          {recentNote ? (
+            <div className="space-y-1">
+              <p className="text-sm font-semibold truncate" style={{ color: theme.text }}>
+                {recentNote.title || '제목 없음'}
+              </p>
+              <p className="text-xs leading-relaxed line-clamp-2 opacity-70" style={{ color: theme.textSecondary }}>
+                {recentNote.content}
+              </p>
             </div>
-
-            <div className="flex-shrink-0 px-5 py-3 flex flex-col gap-2 border-t md:flex-row md:justify-end" style={{ borderColor: settings.isDarkMode ? 'rgba(148,163,184,0.18)' : 'rgba(148,163,184,0.14)' }}>
-              <button
-                onClick={() => setShowHealthScheduler(false)}
-                className="rounded-2xl px-4 py-3 font-medium"
-                style={{ background: settings.isDarkMode ? 'rgba(30,41,59,0.8)' : 'rgba(241,245,249,0.92)', color: theme.textSecondary }}
-              >
-                취소
-              </button>
-              <button
-                onClick={handleRegisterHealthEvents}
-                className="rounded-2xl px-5 py-3 font-semibold"
-                style={{
-                  background: `linear-gradient(135deg, ${theme.primary}, ${theme.accent1})`,
-                  color: '#fff',
-                }}
-              >
-                캘린더에 운동 일정 등록
-              </button>
-            </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          ) : (
+            <p className="text-xs" style={{ color: theme.textMuted }}>메모가 없어요</p>
+          )}
+          <div className="mt-3 flex items-center gap-1 text-xs font-semibold" style={{ color: theme.primary }}>
+            메모 보기 <ChevronRight className="h-3 w-3" />
+          </div>
+        </motion.button>
+      </div>
     </div>
   );
 }

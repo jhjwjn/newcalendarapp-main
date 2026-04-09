@@ -567,7 +567,7 @@ export function StudyTab() {
             <span>정답 {sessionCorrect} / {sessionTotal}</span>
           </div>
 
-          <div onClick={() => setIsFlipped(current => !current)} className="relative h-[300px] cursor-pointer perspective-1000 md:h-[360px]">
+          <div onClick={() => setIsFlipped(current => !current)} className="relative h-[180px] cursor-pointer perspective-1000 md:h-[360px]">
             <div
               className={`absolute inset-0 h-full w-full transition-transform duration-500 transform-style-3d ${
                 isFlipped ? 'rotate-y-180' : ''
@@ -1161,11 +1161,34 @@ export function StudyTab() {
   };
 
   return (
-    <div className="mx-auto max-w-[980px] p-3">
-      <div className="flex min-h-[720px] flex-col gap-3 md:grid md:grid-cols-[120px_minmax(0,1fr)] md:gap-3">
+    <div className="mx-auto max-w-[980px] p-3 md:p-3">
+      {/* 모바일 모드 탭 (상단 스크롤 가능) */}
+      <div className="mb-3 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] md:hidden">
+        {modeTabs.map(tab => {
+          const Icon = tab.icon;
+          const active = mode === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setMode(tab.id)}
+              className="flex shrink-0 items-center gap-1.5 rounded-2xl px-3.5 py-2 text-xs font-semibold whitespace-nowrap transition-all"
+              style={{
+                background: active ? theme.navActiveBackground : theme.panelBackground,
+                color: active ? theme.navActiveText : theme.textMuted,
+                border: `1px solid ${active ? 'transparent' : theme.panelBorder}`,
+              }}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="flex min-h-[600px] flex-col gap-2 md:grid md:grid-cols-[152px_minmax(0,1fr)] md:gap-3">
         <div className="hidden md:block">
           <aside
-            className="rounded-[22px] border p-2.5"
+            className="rounded-xl md:rounded-[22px] border p-2 md:p-2.5"
             style={{
               background: theme.panelBackground,
               borderColor: theme.panelBorder,
@@ -1183,13 +1206,13 @@ export function StudyTab() {
                   <button
                     key={tab.id}
                     onClick={() => setMode(tab.id)}
-                    className="flex w-full items-center gap-2 rounded-2xl px-3 py-2.5 text-sm font-medium"
+                    className="flex w-full items-center gap-2 rounded-2xl px-3 py-2.5 text-sm font-medium whitespace-nowrap"
                     style={{
                       background: active ? theme.panelBackgroundStrong : 'transparent',
                       color: active ? theme.text : theme.textMuted,
                     }}
                   >
-                    <Icon className="h-4 w-4" />
+                    <Icon className="h-4 w-4 shrink-0" />
                     {tab.label}
                   </button>
                 );
@@ -1211,7 +1234,7 @@ export function StudyTab() {
           </aside>
         </div>
 
-        <div className="flex flex-1 flex-col gap-3 pb-14 md:pb-0">
+        <div className="flex flex-1 flex-col gap-3 pb-0">
           <div
             className="rounded-[22px] border px-4 py-3.5"
             style={{

@@ -22,12 +22,13 @@ export interface Event {
   updatedAt: string;
 }
 
-// CalendarEvent는 Event의 별칭
 export type CalendarEvent = Event;
 
 export interface Note {
   id: string;
+  title?: string;
   content: string;
+  pinned?: boolean;
   userId: string;
   createdAt: string;
   updatedAt: string;
@@ -42,10 +43,8 @@ export interface FlashCard {
   lastReviewed?: string;
 }
 
-// Flashcard는 FlashCard의 별칭
 export type Flashcard = FlashCard;
 
-// FlashcardDeck 추가
 export interface FlashcardDeck {
   id: string;
   name: string;
@@ -92,12 +91,30 @@ export interface StudyHistoryEntry {
   mode: 'daily' | 'review';
 }
 
+// 습관 추적
+export interface Habit {
+  id: string;
+  name: string;
+  emoji: string;
+  color: string;
+  targetDays: number[]; // 0=일, 1=월 ... 6=토 (비어있으면 매일)
+  userId: string;
+  createdAt: string;
+}
+
+export interface HabitRecord {
+  id: string;
+  habitId: string;
+  date: string; // YYYY-MM-DD
+  userId: string;
+}
+
 export interface UserSettings {
   name: string;
   theme: 'slate' | 'forest' | 'amber' | 'rose' | 'mono' | 'white';
-  glassAccent?: 'blue' | 'purple' | 'peach' | 'black'; // Glass 테마 악센트 색상 (라이트모드)
-  glassAccentDark?: 'blue' | 'purple' | 'peach' | 'black'; // Glass 테마 악센트 색상 (다크모드)
-  isDarkMode?: boolean; // 다크모드 설정
+  glassAccent?: 'blue' | 'purple' | 'peach' | 'black';
+  glassAccentDark?: 'blue' | 'purple' | 'peach' | 'black';
+  isDarkMode?: boolean;
   groqApiKey: string;
 }
 

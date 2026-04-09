@@ -109,9 +109,10 @@ export function HealthProvider({ children }: { children: ReactNode }) {
   const loadDataFromCloud = async (userId: string) => {
     setSyncState({ status: 'syncing', lastSync: syncState.lastSync, error: null });
     try {
-      const [recordsRes, bodyRes] = await Promise.all([
+      const [recordsRes, bodyRes, weekPlansRes] = await Promise.all([
         supabase.from('workout_records').select('*').eq('user_id', userId),
         supabase.from('body_records').select('*').eq('user_id', userId),
+        supabase.from('week_plans').select('*').eq('user_id', userId),
       ]);
 
       if (recordsRes.data) {
@@ -122,6 +123,12 @@ export function HealthProvider({ children }: { children: ReactNode }) {
       if (bodyRes.data) {
         const cloudBody = bodyRes.data.map(r => ({ id: r.id, userId: r.user_id, date: r.date, weight: r.weight, muscleMass: r.muscle_mass, bodyFat: r.body_fat, bodyFatMass: r.body_fat_mass, bmi: r.bmi, visceralFat: r.visceral_fat, createdAt: r.created_at }));
         if (cloudBody.length > 0) { setBodyRecords(cloudBody); localStorage.setItem('health_body_records', JSON.stringify(cloudBody)); }
+      }
+
+      if (weekPlansRes.data && weekPlansRes.data.length > 0) {
+        const cloudPlans = weekPlansRes.data.map(p => ({ id: p.id, weekNumber: p.week_number, days: p.days, userId: p.user_id, createdAt: p.created_at, updatedAt: p.updated_at }));
+        setWeekPlans(cloudPlans);
+        localStorage.setItem('health_week_plans', JSON.stringify(cloudPlans));
       }
 
       setSyncState({ status: 'synced', lastSync: new Date().toISOString(), error: null });
@@ -141,6 +148,12 @@ export function HealthProvider({ children }: { children: ReactNode }) {
     const updated = weekPlans.map(plan => plan.weekNumber === weekNumber ? { ...plan, days: plan.days.map(day => day.dayOfWeek === dayOfWeek ? { ...day, ...routine } : day), updatedAt: new Date().toISOString() } : plan);
     setWeekPlans(updated);
     saveToLocal('health_week_plans', updated);
+    if (user) {
+      const plan = updated.find(p => p.weekNumber === weekNumber);
+      if (plan) {
+        await supabase.from('week_plans').upsert({ id: plan.id, user_id: user.id, week_number: plan.weekNumber, days: plan.days, updated_at: new Date().toISOString() });
+      }
+    }
   };
 
   const addExerciseToDayRoutine = async (weekNumber: number, dayOfWeek: number, exercise: Omit<WorkoutExercise, 'id' | 'order'>) => {
@@ -152,6 +165,12 @@ export function HealthProvider({ children }: { children: ReactNode }) {
     });
     setWeekPlans(updated);
     saveToLocal('health_week_plans', updated);
+    if (user) {
+      const plan = updated.find(p => p.weekNumber === weekNumber);
+      if (plan) {
+        await supabase.from('week_plans').upsert({ id: plan.id, user_id: user.id, week_number: plan.weekNumber, days: plan.days, updated_at: new Date().toISOString() });
+      }
+    }
   };
 
   const addWorkoutRecord = async (record: Omit<WorkoutRecord, 'id' | 'userId' | 'createdAt'>) => {

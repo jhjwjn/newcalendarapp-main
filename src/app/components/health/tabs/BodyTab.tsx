@@ -1,351 +1,332 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useHealth } from '../../../context/HealthContext';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
-import { X, Plus, TrendingUp } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { Plus, Trash2, TrendingUp, TrendingDown, Scale, X, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { toast } from '../../../lib/toast';
-
-type MetricTab = '체중' | '골격근량' | '체지방량' | '체지방률' | 'BMI';
 
 interface BodyTabProps {
   theme: any;
 }
 
 export function BodyTab({ theme }: BodyTabProps) {
-  const { bodyRecords, getLatestBodyRecord, addBodyRecord } = useHealth();
-  const [selectedTab, setSelectedTab] = useState<MetricTab>('체중');
-  const [showAddSheet, setShowAddSheet] = useState(false);
-
-  const latestRecord = getLatestBodyRecord();
-  
-  const [formData, setFormData] = useState({
+  const { bodyRecords, addBodyRecord, deleteBodyRecord, getLatestBodyRecord, settings } = useHealth();
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({
+    weight: '',
+    muscleMass: '',
+    bodyFat: '',
+    bodyFatMass: '',
+    visceralFat: '',
     date: format(new Date(), 'yyyy-MM-dd'),
-    weight: latestRecord?.weight || 0,
-    muscleMass: latestRecord?.muscleMass || 0,
-    bodyFat: latestRecord?.bodyFat || 0,
-    bodyFatMass: latestRecord?.bodyFatMass || 0,
-    bmi: latestRecord?.bmi || 0,
-    visceralFat: latestRecord?.visceralFat,
   });
 
-  const metrics = [
-    { label: '체중', value: latestRecord?.weight, unit: 'kg' },
-    { label: '골격근량', value: latestRecord?.muscleMass, unit: 'kg' },
-    { label: '체지방률', value: latestRecord?.bodyFat, unit: '%' },
-    { label: '체지방량', value: latestRecord?.bodyFatMass, unit: 'kg' },
-    { label: 'BMI', value: latestRecord?.bmi, unit: '' },
-    { label: '내장지방', value: latestRecord?.visceralFat, unit: '레벨' },
-  ];
+  const latest = getLatestBodyRecord();
 
-  const tabs: MetricTab[] = ['체중', '골격근량', '체지방량', '체지방률', 'BMI'];
+  const calculateBMI = (weight: number) => {
+    if (!settings.height || settings.height === 0) return null;
+    const heightM = settings.height / 100;
+    return weight / (heightM * heightM);
+  };
+
+  const sortedRecords = useMemo(
+    () => [...bodyRecords].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()),
+    [bodyRecords]
+  );
+
+  const chartData = useMemo(() => {
+    return sortedRecords.slice(-30).map(r => ({
+      date: format(new Date(r.date), 'M/d'),
+      weight: r.weight,
+      bodyFat: r.bodyFat,
+      muscle: r.muscleMass,
+    }));
+  }, [sortedRecords]);
 
   const handleSave = async () => {
+    if (!form.weight) {
+      toast.error('체중을 입력해주세요');
+      return;
+    }
+    const weight = parseFloat(form.weight);
+    const bmi = calculateBMI(weight);
+
     await addBodyRecord({
-      date: formData.date,
-      weight: formData.weight,
-      muscleMass: formData.muscleMass,
-      bodyFat: formData.bodyFat,
-      bodyFatMass: formData.bodyFatMass,
-      bmi: formData.bmi,
-      visceralFat: formData.visceralFat,
+      date: form.date,
+      weight,
+      muscleMass: form.muscleMass ? parseFloat(form.muscleMass) : undefined,
+      bodyFat: form.bodyFat ? parseFloat(form.bodyFat) : undefined,
+      bodyFatMass: form.bodyFatMass ? parseFloat(form.bodyFatMass) : undefined,
+      bmi: bmi || undefined,
+      visceralFat: form.visceralFat ? parseFloat(form.visceralFat) : undefined,
     });
 
-    setShowAddSheet(false);
-    toast.success('인바디 기록이 저장되었습니다.');
+    toast.success('체성분이 기록되었습니다');
+    setShowForm(false);
+    setForm({ weight: '', muscleMass: '', bodyFat: '', bodyFatMass: '', visceralFat: '', date: format(new Date(), 'yyyy-MM-dd') });
   };
 
-  const getChartData = () => {
-    const sorted = [...bodyRecords].sort((a, b) => 
-      new Date(a.date).getTime() - new Date(b.date).getTime()
-    );
-
-    let key: keyof typeof formData;
-    switch (selectedTab) {
-      case '체중': key = 'weight'; break;
-      case '골격근량': key = 'muscleMass'; break;
-      case '체지방량': key = 'bodyFatMass'; break;
-      case '체지방률': key = 'bodyFat'; break;
-      case 'BMI': key = 'bmi'; break;
-      default: key = 'weight';
-    }
-
-    return sorted.map(r => ({ date: r.date, value: r[key] || 0 }));
+  const prev = sortedRecords.length >= 2 ? sortedRecords[sortedRecords.length - 2] : null;
+  const getDiff = (current?: number, previous?: number) => {
+    if (current == null || previous == null) return null;
+    return (current - previous).toFixed(1);
   };
 
-  const chartData = getChartData();
-  const hasEnoughData = chartData.length >= 2;
+  const weightDiff = latest && prev ? getDiff(latest.weight, prev.weight) : null;
+  const muscleDiff = latest && prev ? getDiff(latest.muscleMass, prev.muscleMass) : null;
+  const bodyFatDiff = latest && prev ? getDiff(latest.bodyFat, prev.bodyFat) : null;
+
+  const inputStyle = {
+    background: theme.navBackground,
+    color: theme.text,
+    borderColor: theme.line,
+  };
 
   return (
-    <div className="min-h-full pb-24" style={{ backgroundColor: theme.bg }}>
-      <div className="mx-auto max-w-[1320px] px-4 pb-6 pt-3">
-        {/* 헤더 */}
-        <div className="mb-4 md:mb-6">
-          <h1 className="text-2xl md:text-4xl font-black tracking-tight mb-1 md:mb-2" style={{ color: theme.text }}>
-            BODY
-          </h1>
-          <p className="text-sm md:text-base font-medium" style={{ color: theme.textSecondary }}>
-            {latestRecord ? format(new Date(latestRecord.date), 'M월 d일 측정', { locale: ko }) : '기록 없음'}
+    <div className="mx-auto max-w-[1360px] p-3 md:p-5 space-y-4">
+      {/* 헤더 */}
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: theme.textMuted }}>
+            Body Composition
           </p>
+          <h1 className="text-2xl font-black" style={{ color: theme.text }}>바디</h1>
         </div>
-
-        {/* 현재 지표 - 모바일 3열 2줄 / 데스크탑 3열 */}
-        <div className="grid grid-cols-3 gap-2 md:gap-3 mb-4 md:mb-6">
-          {metrics.map((metric) => (
-            <div
-              key={metric.label}
-              className="rounded-xl md:rounded-2xl p-3 md:p-4 shadow-md md:shadow-xl border"
-              style={{ background: theme.panelBackgroundStrong || theme.card, borderColor: theme.cardBorder, boxShadow: theme.elevatedShadow }}
-            >
-              <div className="text-[10px] md:text-xs font-bold mb-1 md:mb-2" style={{ color: theme.textSecondary }}>
-                {metric.label}
-              </div>
-              <div className="flex items-baseline gap-1 md:gap-2">
-                <span className="text-xl md:text-3xl font-black" style={{ color: theme.text }}>
-                  {metric.value?.toFixed(1) || '-'}
-                </span>
-                {metric.unit && (
-                  <span className="text-[10px] md:text-sm font-semibold" style={{ color: theme.textMuted }}>
-                    {metric.unit}
-                  </span>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* 추이 그래프 */}
-        <div
-          className="rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-lg md:shadow-xl border mb-4 md:mb-6"
-          style={{ background: theme.panelBackgroundStrong || theme.card, borderColor: theme.cardBorder, boxShadow: theme.panelShadow }}
-        >
-          <div className="flex items-center gap-2 mb-3 md:mb-5">
-            <TrendingUp className="w-4 h-4 md:w-5 md:h-5" style={{ color: theme.primary }} />
-            <h3 className="text-sm md:text-lg font-black" style={{ color: theme.text }}>
-              측정 추이
-            </h3>
-          </div>
-
-          {/* 탭 */}
-          <div className="flex gap-1.5 md:gap-2 mb-4 md:mb-6 overflow-x-auto pb-1">
-            {tabs.map(tab => (
-              <button
-                key={tab}
-                onClick={() => setSelectedTab(tab)}
-                className="px-3 md:px-5 py-2 md:py-2.5 rounded-lg md:rounded-xl font-bold text-xs md:text-sm whitespace-nowrap transition-all"
-                style={{
-                  background: selectedTab === tab ? theme.buttonGradient || theme.primary : theme.accentSurface || theme.accent,
-                  color: selectedTab === tab ? theme.bg : theme.textMuted,
-                  boxShadow: selectedTab === tab ? theme.buttonShadow : 'none',
-                }}
-              >
-                {tab}
-              </button>
-            ))}
-          </div>
-
-          {hasEnoughData ? (
-            <div className="h-48 md:h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={theme.cardBorder} />
-                  <XAxis
-                    dataKey="date"
-                    tickFormatter={(value) => format(new Date(value), 'M/d')}
-                    stroke={theme.textMuted}
-                    style={{ fontSize: '10px' }}
-                  />
-                  <YAxis stroke={theme.textMuted} style={{ fontSize: '10px' }} />
-                  <Tooltip
-                    contentStyle={{
-                      background: theme.panelBackgroundStrong || theme.card,
-                      border: `1px solid ${theme.cardBorder}`,
-                      borderRadius: '8px',
-                      color: theme.text,
-                      fontWeight: 700,
-                      fontSize: '12px',
-                    }}
-                    labelStyle={{ color: theme.textSecondary, fontWeight: 600 }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="value"
-                    stroke={theme.primary}
-                    strokeWidth={2}
-                    dot={{ fill: theme.primary, r: 4 }}
-                    activeDot={{ r: 6 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          ) : (
-            <div className="h-48 md:h-64 flex items-center justify-center">
-              <div className="text-center">
-                <div className="text-4xl md:text-5xl mb-2 md:mb-3">📊</div>
-                <p className="text-sm md:text-lg font-bold mb-1" style={{ color: theme.text }}>
-                  데이터가 부족해요
-                </p>
-                <p className="text-xs md:text-sm font-semibold" style={{ color: theme.textMuted }}>
-                  2개 이상의 기록이 필요합니다
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* 기록 추가 버튼 */}
-        <button
-          onClick={() => setShowAddSheet(true)}
-          className="mb-4 md:mb-6 w-full py-3 md:py-4 rounded-2xl md:rounded-3xl font-bold md:font-black text-sm md:text-base shadow-lg md:shadow-xl flex items-center justify-center gap-2 md:gap-3"
+        <motion.button
+          whileTap={{ scale: 0.95 }}
+          onClick={() => setShowForm(true)}
+          className="flex items-center gap-1.5 rounded-2xl px-4 py-2.5 text-sm font-bold text-white"
           style={{
-            background: theme.buttonGradient || theme.primary,
-            color: theme.bg,
-            boxShadow: theme.buttonShadow,
+            background: `linear-gradient(135deg, ${theme.primary}, ${theme.accent1 || theme.primary})`,
+            boxShadow: `0 8px 24px ${theme.primary}30`,
           }}
         >
-          <Plus className="w-4 h-4 md:w-6 md:h-6" />
-          인바디 기록 추가
-        </button>
-
-        {/* 기록 히스토리 */}
-        {bodyRecords.length > 0 && (
-          <div className="space-y-2 md:space-y-3">
-            <h3 className="text-sm md:text-lg font-black px-1" style={{ color: theme.text }}>
-              기록 히스토리
-            </h3>
-            {[...bodyRecords]
-              .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-              .map(record => (
-                <div
-                  key={record.id}
-                  className="rounded-xl md:rounded-2xl p-3 md:p-5 shadow-md md:shadow-lg border"
-                  style={{ background: theme.panelBackgroundStrong || theme.card, borderColor: theme.cardBorder, boxShadow: theme.panelShadow }}
-                >
-                  <div className="flex items-center justify-between mb-2 md:mb-3">
-                    <span className="text-xs md:text-sm font-bold" style={{ color: theme.textSecondary }}>
-                      {format(new Date(record.date), 'yyyy년 M월 d일', { locale: ko })}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 md:gap-3 text-xs md:text-sm">
-                    <div>
-                      <div className="font-semibold mb-0.5 md:mb-1" style={{ color: theme.textMuted }}>체중</div>
-                      <div className="font-black" style={{ color: theme.text }}>{record.weight}kg</div>
-                    </div>
-                    <div>
-                      <div className="font-semibold mb-0.5 md:mb-1" style={{ color: theme.textMuted }}>골격근량</div>
-                      <div className="font-black" style={{ color: theme.text }}>{record.muscleMass}kg</div>
-                    </div>
-                    <div>
-                      <div className="font-semibold mb-0.5 md:mb-1" style={{ color: theme.textMuted }}>체지방률</div>
-                      <div className="font-black" style={{ color: theme.text }}>{record.bodyFat}%</div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-          </div>
-        )}
+          <Plus className="h-4 w-4" />
+          기록
+        </motion.button>
       </div>
 
-      {/* 기록 추가 모달 */}
-      <AnimatePresence>
-        {showAddSheet && (
-          <>
-            <motion.div
-              className="fixed inset-0 z-50"
-              style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              onClick={() => setShowAddSheet(false)}
-            />
-            <motion.div
-              className="fixed inset-x-0 bottom-0 md:inset-0 md:flex md:items-center md:justify-center z-50"
-              initial={{ opacity: 0, y: 50 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 30 }}
-              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-              onClick={() => setShowAddSheet(false)}
-            >
-              <motion.div
-                className="rounded-t-2xl md:rounded-3xl p-4 md:p-6 max-h-[85vh] overflow-y-auto md:max-w-md md:w-full shadow-xl md:shadow-2xl"
-                style={{ background: theme.panelBackgroundStrong || theme.card, boxShadow: theme.elevatedShadow }}
-                onClick={(e) => e.stopPropagation()}
-                initial={{ scale: 0.95, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.95, opacity: 0 }}
-                transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-              >
-                <div className="flex items-center justify-between mb-4 md:mb-6">
-                  <h3 className="text-lg md:text-2xl font-black" style={{ color: theme.text }}>
-                    인바디 기록 추가
-                  </h3>
-                  <button onClick={() => setShowAddSheet(false)}>
-                    <X className="w-5 h-5 md:w-7 md:h-7" style={{ color: theme.textMuted }} />
-                  </button>
-                </div>
+      {/* 최신 수치 */}
+      {latest ? (
+        <div
+          className="rounded-2xl border p-4 md:p-5"
+          style={{
+            background: `linear-gradient(135deg, ${theme.primary}12, transparent)`,
+            borderColor: `${theme.primary}25`,
+          }}
+        >
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-bold" style={{ color: theme.text }}>최근 기록</h2>
+            <p className="text-xs" style={{ color: theme.textMuted }}>
+              {format(new Date(latest.date), 'M월 d일', { locale: ko })}
+            </p>
+          </div>
 
-                <div className="space-y-3 md:space-y-4">
-                  <div>
-                    <label className="block text-xs md:text-sm font-bold mb-1.5 md:mb-2" style={{ color: theme.textSecondary }}>
-                      측정 날짜
-                    </label>
-                    <input
-                      type="date"
-                      value={formData.date}
-                      onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                      className="w-full px-3 md:px-4 py-2.5 md:py-3 rounded-lg md:rounded-xl border-0 font-semibold text-sm"
-                      style={{ background: theme.accentSurface || theme.accent, color: theme.text }}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs md:text-sm font-bold mb-1.5 md:mb-2" style={{ color: theme.textSecondary }}>
-                      체중 (kg)
-                    </label>
-                    <input type="number" step="0.1" value={formData.weight || ''} onChange={(e) => setFormData({ ...formData, weight: Number(e.target.value) })} className="w-full px-3 md:px-4 py-2.5 md:py-3 rounded-lg md:rounded-xl border-0 font-semibold text-sm" style={{ background: theme.accentSurface || theme.accent, color: theme.text }} placeholder="0.0" />
-                  </div>
-                  <div>
-                    <label className="block text-xs md:text-sm font-bold mb-1.5 md:mb-2" style={{ color: theme.textSecondary }}>
-                      골격근량 (kg)
-                    </label>
-                    <input type="number" step="0.1" value={formData.muscleMass || ''} onChange={(e) => setFormData({ ...formData, muscleMass: Number(e.target.value) })} className="w-full px-3 md:px-4 py-2.5 md:py-3 rounded-lg md:rounded-xl border-0 font-semibold text-sm" style={{ background: theme.accentSurface || theme.accent, color: theme.text }} placeholder="0.0" />
-                  </div>
-                  <div>
-                    <label className="block text-xs md:text-sm font-bold mb-1.5 md:mb-2" style={{ color: theme.textSecondary }}>
-                      체지방률 (%)
-                    </label>
-                    <input type="number" step="0.1" value={formData.bodyFat || ''} onChange={(e) => setFormData({ ...formData, bodyFat: Number(e.target.value) })} className="w-full px-3 md:px-4 py-2.5 md:py-3 rounded-lg md:rounded-xl border-0 font-semibold text-sm" style={{ background: theme.accentSurface || theme.accent, color: theme.text }} placeholder="0.0" />
-                  </div>
-                  <div>
-                    <label className="block text-xs md:text-sm font-bold mb-1.5 md:mb-2" style={{ color: theme.textSecondary }}>
-                      체지방량 (kg)
-                    </label>
-                    <input type="number" step="0.1" value={formData.bodyFatMass || ''} onChange={(e) => setFormData({ ...formData, bodyFatMass: Number(e.target.value) })} className="w-full px-3 md:px-4 py-2.5 md:py-3 rounded-lg md:rounded-xl border-0 font-semibold text-sm" style={{ background: theme.accentSurface || theme.accent, color: theme.text }} placeholder="0.0" />
-                  </div>
-                  <div>
-                    <label className="block text-xs md:text-sm font-bold mb-1.5 md:mb-2" style={{ color: theme.textSecondary }}>
-                      BMI
-                    </label>
-                    <input type="number" step="0.1" value={formData.bmi || ''} onChange={(e) => setFormData({ ...formData, bmi: Number(e.target.value) })} className="w-full px-3 md:px-4 py-2.5 md:py-3 rounded-lg md:rounded-xl border-0 font-semibold text-sm" style={{ background: theme.accentSurface || theme.accent, color: theme.text }} placeholder="0.0" />
-                  </div>
-                  <div>
-                    <label className="block text-xs md:text-sm font-bold mb-1.5 md:mb-2" style={{ color: theme.textSecondary }}>
-                      내장지방 (레벨, 선택)
-                    </label>
-                    <input type="number" value={formData.visceralFat || ''} onChange={(e) => setFormData({ ...formData, visceralFat: Number(e.target.value) || undefined })} className="w-full px-3 md:px-4 py-2.5 md:py-3 rounded-lg md:rounded-xl border-0 font-semibold text-sm" style={{ background: theme.accentSurface || theme.accent, color: theme.text }} placeholder="0" />
-                  </div>
-                  <button
-                    onClick={handleSave}
-                    className="w-full py-3 md:py-4 rounded-xl md:rounded-2xl font-bold md:font-black text-sm md:text-lg shadow-xl mt-4 md:mt-6"
-                    style={{ background: theme.buttonGradient || theme.primary, color: theme.bg, boxShadow: theme.buttonShadow }}
-                  >
-                    저장하기
-                  </button>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              { label: '체중', value: latest.weight, unit: 'kg', diff: weightDiff, upIsBad: true },
+              { label: '골격근량', value: latest.muscleMass, unit: 'kg', diff: muscleDiff, upIsBad: false },
+              { label: '체지방률', value: latest.bodyFat, unit: '%', diff: bodyFatDiff, upIsBad: true },
+              { label: 'BMI', value: latest.bmi?.toFixed(1), unit: '', diff: null, upIsBad: true },
+            ].map((item, idx) => (
+              <div key={idx} className="rounded-xl p-3" style={{ background: theme.panelBackground }}>
+                <p className="text-[10px] font-semibold mb-1" style={{ color: theme.textMuted }}>{item.label}</p>
+                <div className="flex items-end gap-1">
+                  <span className="text-xl font-black" style={{ color: theme.primary }}>
+                    {item.value ?? '-'}
+                  </span>
+                  <span className="text-xs mb-0.5" style={{ color: theme.textMuted }}>{item.unit}</span>
                 </div>
-              </motion.div>
+                {item.diff !== null && item.diff !== undefined && (
+                  <div className="flex items-center gap-0.5 mt-1">
+                    {parseFloat(item.diff) > 0 ? (
+                      <TrendingUp className="h-3 w-3" style={{ color: item.upIsBad ? '#f87171' : '#4ade80' }} />
+                    ) : parseFloat(item.diff) < 0 ? (
+                      <TrendingDown className="h-3 w-3" style={{ color: item.upIsBad ? '#4ade80' : '#f87171' }} />
+                    ) : null}
+                    <span
+                      className="text-[10px] font-bold"
+                      style={{
+                        color: parseFloat(item.diff) === 0
+                          ? theme.textMuted
+                          : parseFloat(item.diff) > 0
+                          ? item.upIsBad ? '#f87171' : '#4ade80'
+                          : item.upIsBad ? '#4ade80' : '#f87171',
+                      }}
+                    >
+                      {parseFloat(item.diff) > 0 ? '+' : ''}{item.diff}
+                    </span>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div
+          className="rounded-2xl border p-8 text-center"
+          style={{ background: theme.panelBackground, borderColor: theme.panelBorder }}
+        >
+          <Scale className="h-8 w-8 mx-auto mb-2 opacity-20" style={{ color: theme.textMuted }} />
+          <p className="text-sm font-semibold mb-1" style={{ color: theme.text }}>체성분 기록이 없어요</p>
+          <p className="text-xs mb-4" style={{ color: theme.textMuted }}>첫 번째 기록을 추가해보세요</p>
+          <button
+            onClick={() => setShowForm(true)}
+            className="text-sm font-bold px-4 py-2 rounded-2xl"
+            style={{ background: `${theme.primary}18`, color: theme.primary }}
+          >
+            기록 시작하기
+          </button>
+        </div>
+      )}
+
+      {/* 체중 추이 그래프 */}
+      {chartData.length >= 2 && (
+        <div
+          className="rounded-2xl border p-4"
+          style={{ background: theme.panelBackground, borderColor: theme.panelBorder }}
+        >
+          <h2 className="text-sm font-bold mb-4" style={{ color: theme.text }}>
+            체중 추이
+          </h2>
+          <ResponsiveContainer width="100%" height={160}>
+            <LineChart data={chartData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={theme.line} vertical={false} />
+              <XAxis dataKey="date" tick={{ fontSize: 10, fill: theme.textMuted }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 10, fill: theme.textMuted }} axisLine={false} tickLine={false} domain={['auto', 'auto']} />
+              <Tooltip
+                contentStyle={{
+                  background: theme.shellBackground,
+                  border: `1px solid ${theme.shellBorder}`,
+                  borderRadius: '12px',
+                  color: theme.text,
+                  fontSize: '12px',
+                }}
+                formatter={(value: any) => [`${value}kg`, '체중']}
+              />
+              <Line type="monotone" dataKey="weight" stroke={theme.primary} strokeWidth={2.5} dot={{ fill: theme.primary, r: 3 }} activeDot={{ r: 5 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* 기록 목록 */}
+      {bodyRecords.length > 0 && (
+        <div
+          className="rounded-2xl border p-4"
+          style={{ background: theme.panelBackground, borderColor: theme.panelBorder }}
+        >
+          <h2 className="text-sm font-bold mb-3" style={{ color: theme.text }}>기록 히스토리</h2>
+          <div className="space-y-2">
+            {sortedRecords.slice(-10).reverse().map(record => (
+              <div
+                key={record.id}
+                className="flex items-center justify-between rounded-xl p-3"
+                style={{ background: theme.navBackground }}
+              >
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: theme.text }}>
+                    {format(new Date(record.date), 'M월 d일', { locale: ko })}
+                  </p>
+                  <p className="text-xs mt-0.5" style={{ color: theme.textMuted }}>
+                    {record.weight}kg
+                    {record.bodyFat != null && ` · 체지방 ${record.bodyFat}%`}
+                    {record.muscleMass != null && ` · 근육 ${record.muscleMass}kg`}
+                  </p>
+                </div>
+                <button
+                  onClick={() => { deleteBodyRecord(record.id); toast.success('기록이 삭제되었습니다'); }}
+                  className="p-1.5 rounded-xl"
+                  style={{ color: theme.textMuted }}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 입력 모달 */}
+      <AnimatePresence>
+        {showForm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-4"
+            style={{ background: 'rgba(0,0,0,0.4)' }}
+            onClick={e => { if (e.target === e.currentTarget) setShowForm(false); }}
+          >
+            <motion.div
+              initial={{ y: 40, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 40, opacity: 0 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="w-full max-w-md rounded-3xl border"
+              style={{
+                background: theme.shellBackground,
+                borderColor: theme.shellBorder,
+                backdropFilter: 'blur(20px)',
+              }}
+            >
+              <div className="flex items-center justify-between p-5 pb-4">
+                <h3 className="text-lg font-black" style={{ color: theme.text }}>체성분 입력</h3>
+                <button onClick={() => setShowForm(false)}>
+                  <X className="h-5 w-5" style={{ color: theme.textMuted }} />
+                </button>
+              </div>
+
+              <div className="px-5 pb-2 space-y-3">
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-widest mb-1.5 block" style={{ color: theme.textMuted }}>날짜</label>
+                  <input type="date" value={form.date} onChange={e => setForm(p => ({ ...p, date: e.target.value }))} className="w-full rounded-2xl border px-4 py-3 text-sm outline-none" style={inputStyle} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { key: 'weight', label: '체중 (kg) *', placeholder: '70.0', full: true },
+                    { key: 'muscleMass', label: '골격근량 (kg)', placeholder: '35.0', full: false },
+                    { key: 'bodyFat', label: '체지방률 (%)', placeholder: '20.0', full: false },
+                    { key: 'bodyFatMass', label: '체지방량 (kg)', placeholder: '14.0', full: false },
+                    { key: 'visceralFat', label: '내장지방', placeholder: '10', full: false },
+                  ].map(field => (
+                    <div key={field.key} className={field.full ? 'col-span-2' : ''}>
+                      <label className="text-xs font-semibold mb-1.5 block" style={{ color: theme.textMuted }}>{field.label}</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={form[field.key as keyof typeof form]}
+                        onChange={e => setForm(p => ({ ...p, [field.key]: e.target.value }))}
+                        placeholder={field.placeholder}
+                        className="w-full rounded-2xl border px-4 py-2.5 text-sm outline-none"
+                        style={inputStyle}
+                      />
+                    </div>
+                  ))}
+                </div>
+                {form.weight && settings.height > 0 && (
+                  <div className="rounded-2xl p-3 text-center text-sm font-bold" style={{ background: `${theme.primary}10`, color: theme.primary }}>
+                    BMI: {(parseFloat(form.weight) / Math.pow(settings.height / 100, 2)).toFixed(1)}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-3 p-5 pt-3">
+                <button onClick={() => setShowForm(false)} className="flex-1 rounded-2xl py-3 text-sm font-bold border" style={{ borderColor: theme.line, color: theme.textMuted }}>취소</button>
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
+                  onClick={handleSave}
+                  className="flex-1 flex items-center justify-center gap-2 rounded-2xl py-3 text-sm font-bold text-white"
+                  style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.accent1 || theme.primary})`, boxShadow: `0 8px 24px ${theme.primary}30` }}
+                >
+                  <Check className="h-4 w-4" />
+                  저장
+                </motion.button>
+              </div>
             </motion.div>
-          </>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

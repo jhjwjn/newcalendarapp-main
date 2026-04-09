@@ -67,7 +67,25 @@ create table public.workout_records (
 alter table public.workout_records enable row level security;
 create policy "Users can CRUD own workout records" on public.workout_records for all using (auth.uid() = user_id);
 
--- 5. Flashcard Decks (플래시카드 덱)
+-- 5. Week Plans (주간 운동 계획)
+create table public.week_plans (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references public.profiles(id) on delete cascade,
+  week_number integer not null,
+  days jsonb not null default '[]',
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  unique(user_id, week_number)
+);
+
+alter table public.week_plans enable row level security;
+create policy "Users can CRUD own week plans" on public.week_plans for all using (auth.uid() = user_id);
+
+create trigger week_plans_updated_at
+  before update on public.week_plans
+  for each row execute function update_updated_at();
+
+-- 6. Flashcard Decks (플래시카드 덱)
 create table public.flashcard_decks (
   id uuid default gen_random_uuid() primary key,
   user_id uuid references public.profiles(id) on delete cascade,
