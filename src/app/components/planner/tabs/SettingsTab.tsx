@@ -15,7 +15,7 @@ import {
   CloudOff,
   Heart,
   Link2,
-  LinkOff,
+  Unlink,
   Copy,
 } from 'lucide-react';
 import { toast } from '../../../lib/toast';
@@ -260,7 +260,7 @@ export function SettingsTab() {
                     className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold border"
                     style={{ borderColor: theme.line, color: '#f43f5e' }}
                   >
-                    <LinkOff className="h-3.5 w-3.5" /> 연결 해제
+                    <Unlink className="h-3.5 w-3.5" /> 연결 해제
                   </button>
                 </div>
               ) : (
