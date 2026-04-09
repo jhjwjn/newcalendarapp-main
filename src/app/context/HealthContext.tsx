@@ -21,6 +21,8 @@ interface HealthContextType {
   getCurrentWeekPlan: () => WeekPlan | undefined;
   updateDayRoutine: (weekNumber: number, dayOfWeek: number, routine: Partial<DayRoutine>) => Promise<void>;
   addExerciseToDayRoutine: (weekNumber: number, dayOfWeek: number, exercise: Omit<WorkoutExercise, 'id' | 'order'>) => Promise<void>;
+  removeExerciseFromDayRoutine: (weekNumber: number, dayOfWeek: number, exerciseId: string) => Promise<void>;
+  updateExerciseInDayRoutine: (weekNumber: number, dayOfWeek: number, exercise: WorkoutExercise) => Promise<void>;
   workoutRecords: WorkoutRecord[];
   addWorkoutRecord: (record: Omit<WorkoutRecord, 'id' | 'userId' | 'createdAt'>) => Promise<void>;
   deleteWorkoutRecord: (id: string) => Promise<void>;
@@ -173,6 +175,30 @@ export function HealthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const removeExerciseFromDayRoutine = async (weekNumber: number, dayOfWeek: number, exerciseId: string) => {
+    const updated = weekPlans.map(plan => plan.weekNumber === weekNumber
+      ? { ...plan, days: plan.days.map(day => day.dayOfWeek === dayOfWeek ? { ...day, exercises: day.exercises.filter(ex => ex.id !== exerciseId) } : day), updatedAt: new Date().toISOString() }
+      : plan);
+    setWeekPlans(updated);
+    saveToLocal('health_week_plans', updated);
+    if (user) {
+      const plan = updated.find(p => p.weekNumber === weekNumber);
+      if (plan) await supabase.from('week_plans').upsert({ id: plan.id, user_id: user.id, week_number: plan.weekNumber, days: plan.days, updated_at: new Date().toISOString() });
+    }
+  };
+
+  const updateExerciseInDayRoutine = async (weekNumber: number, dayOfWeek: number, exercise: WorkoutExercise) => {
+    const updated = weekPlans.map(plan => plan.weekNumber === weekNumber
+      ? { ...plan, days: plan.days.map(day => day.dayOfWeek === dayOfWeek ? { ...day, exercises: day.exercises.map(ex => ex.id === exercise.id ? exercise : ex) } : day), updatedAt: new Date().toISOString() }
+      : plan);
+    setWeekPlans(updated);
+    saveToLocal('health_week_plans', updated);
+    if (user) {
+      const plan = updated.find(p => p.weekNumber === weekNumber);
+      if (plan) await supabase.from('week_plans').upsert({ id: plan.id, user_id: user.id, week_number: plan.weekNumber, days: plan.days, updated_at: new Date().toISOString() });
+    }
+  };
+
   const addWorkoutRecord = async (record: Omit<WorkoutRecord, 'id' | 'userId' | 'createdAt'>) => {
     const newRecord: WorkoutRecord = { ...record, id: crypto.randomUUID(), userId: user?.id || 'local', createdAt: new Date().toISOString() };
     const updated = [...workoutRecords, newRecord];
@@ -235,7 +261,7 @@ export function HealthProvider({ children }: { children: ReactNode }) {
     saveToLocal('health_settings', updated);
   };
 
-  const signInWithGoogle = async () => { await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } }); };
+  const signInWithGoogle = async () => { await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin + window.location.pathname } }); };
   const signOut = async () => { await supabase.auth.signOut(); setSession(null); setUser(null); };
   const manualSync = async () => { if (!user) return; setSyncState({ status: 'syncing', lastSync: null, error: null }); try { await loadDataFromCloud(user.id); setSyncState({ status: 'synced', lastSync: new Date(), error: null }); } catch (error) { setSyncState({ status: 'error', lastSync: null, error: String(error) }); } };
 
@@ -257,7 +283,7 @@ export function HealthProvider({ children }: { children: ReactNode }) {
   const getTotalWorkoutCount = () => workoutRecords.length;
 
   return (
-    <HealthContext.Provider value={{ session, user, syncState, weekPlans, currentWeek, setCurrentWeek: (week) => { setCurrentWeek(week); saveToLocal('health_current_week', week); }, getCurrentWeekPlan, updateDayRoutine, addExerciseToDayRoutine, workoutRecords, addWorkoutRecord, deleteWorkoutRecord, getRecordsByMonth, getRecordByDate, bodyRecords, addBodyRecord, updateBodyRecord, deleteBodyRecord, getLatestBodyRecord, settings, updateSettings, signInWithGoogle, signOut, manualSync, getMonthlyWorkoutCount, getCurrentStreak, getTotalWorkoutCount }}>
+    <HealthContext.Provider value={{ session, user, syncState, weekPlans, currentWeek, setCurrentWeek: (week) => { setCurrentWeek(week); saveToLocal('health_current_week', week); }, getCurrentWeekPlan, updateDayRoutine, addExerciseToDayRoutine, removeExerciseFromDayRoutine, updateExerciseInDayRoutine, workoutRecords, addWorkoutRecord, deleteWorkoutRecord, getRecordsByMonth, getRecordByDate, bodyRecords, addBodyRecord, updateBodyRecord, deleteBodyRecord, getLatestBodyRecord, settings, updateSettings, signInWithGoogle, signOut, manualSync, getMonthlyWorkoutCount, getCurrentStreak, getTotalWorkoutCount }}>
       {children}
     </HealthContext.Provider>
   );

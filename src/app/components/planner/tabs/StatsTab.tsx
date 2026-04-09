@@ -132,31 +132,31 @@ export function StatsTab() {
         className="rounded-2xl border p-4 md:p-5"
         style={{ background: theme.panelBackground, borderColor: theme.panelBorder }}
       >
-        <h2 className="text-sm font-bold mb-4" style={{ color: theme.text }}>최근 30일 활동</h2>
-        <div className="grid gap-1.5" style={{ gridTemplateColumns: 'repeat(10, 1fr)' }}>
+        <h2 className="text-sm font-bold mb-3" style={{ color: theme.text }}>최근 30일 활동</h2>
+        <div className="flex flex-wrap gap-[3px]">
           {activityData.slice(-30).map((day, idx) => {
             const intensity = day.activity / maxActivity;
             return (
               <div
                 key={idx}
                 title={`${day.date}: 이벤트 ${day.events}개`}
-                className="aspect-square rounded-md transition-all"
+                className="h-[14px] w-[14px] rounded-[3px] transition-all cursor-default shrink-0"
                 style={{
                   background: intensity > 0
                     ? `${theme.primary}${Math.round(intensity * 0.8 * 255).toString(16).padStart(2, '0')}`
                     : theme.line,
-                  opacity: intensity > 0 ? 0.7 + intensity * 0.3 : 0.3,
+                  opacity: intensity > 0 ? 0.6 + intensity * 0.4 : 0.25,
                 }}
               />
             );
           })}
         </div>
-        <div className="flex items-center gap-2 mt-3">
+        <div className="flex items-center gap-1.5 mt-3">
           <span className="text-[10px]" style={{ color: theme.textMuted }}>적음</span>
           {[0.2, 0.4, 0.6, 0.8, 1.0].map(v => (
             <div
               key={v}
-              className="h-3 w-3 rounded-sm"
+              className="h-[10px] w-[10px] rounded-[2px]"
               style={{ background: `${theme.primary}${Math.round(v * 0.8 * 255).toString(16).padStart(2, '0')}` }}
             />
           ))}
