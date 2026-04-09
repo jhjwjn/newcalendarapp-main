@@ -59,18 +59,27 @@ function findLinkedWorkoutEvent(events: CalendarEvent[], record: WorkoutRecord, 
 }
 
 function buildWorkoutMemo(record: WorkoutRecord) {
-  const exerciseSummary = record.exercises
-    .map(exercise => {
-      const setLines = exercise.sets.map((set, index) => `${index + 1}세트 ${set.weight}kg x ${set.reps}회`).join('\n');
-      return `${exercise.name}\n${setLines}`;
-    })
-    .join('\n\n');
+  const dateLabel = `${format(new Date(record.date), 'M/d')} (${DAY_LABELS[record.dayOfWeek]})`;
+  const duration = record.startTime && record.endTime
+    ? (() => {
+        const [sh, sm] = record.startTime.split(':').map(Number);
+        const [eh, em] = record.endTime.split(':').map(Number);
+        const mins = (eh * 60 + em) - (sh * 60 + sm);
+        return mins > 0 ? ` · ${Math.floor(mins / 60)}시간 ${mins % 60}분` : '';
+      })()
+    : '';
 
-  return [
-    `이 날의 운동 | ${format(new Date(record.date), 'M/d')} ${DAY_LABELS[record.dayOfWeek]}요일`,
-    `총 볼륨 ${record.totalVolume.toLocaleString()}kg`,
-    exerciseSummary,
-  ].join('\n');
+  const header = `🏋️ 운동 기록 | ${dateLabel}${duration}\n총 볼륨 ${record.totalVolume.toLocaleString()} kg`;
+
+  const tableRows = record.exercises.map(exercise => {
+    const setLines = exercise.sets
+      .filter(set => !set.isWarmup)
+      .map((set, i) => `  ${i + 1}세트  ${set.weight > 0 ? set.weight + 'kg' : '—'}  ×  ${set.reps}회`)
+      .join('\n');
+    return `▸ ${exercise.name}\n${setLines || '  (기록 없음)'}`;
+  }).join('\n');
+
+  return [header, '─'.repeat(28), tableRows].join('\n');
 }
 
 function appendWorkoutMemo(existingMemo: string | undefined, record: WorkoutRecord) {

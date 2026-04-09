@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   addDays,
   addMonths,
@@ -16,12 +16,13 @@ import {
 } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { AnimatePresence, motion } from 'motion/react';
-import { ChevronLeft, ChevronRight, Maximize2, Minimize2, Plus, GripVertical, GripHorizontal, Repeat, X, Trash2, Edit2, Dumbbell } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Maximize2, Minimize2, Plus, GripVertical, GripHorizontal, Repeat, X, Trash2, Edit2, Dumbbell, Heart } from 'lucide-react';
 import { usePlanner } from '../../../context/PlannerContext';
 import { getPlannerTheme } from '../../../lib/plannerTheme';
 import { EventSheet } from '../EventSheet';
 import { CalendarEvent } from '../../../types/planner';
 import { toast } from '../../../lib/toast';
+import { getMyConnection, fetchPartnerEvents } from '../../../lib/partnerCalendar';
 
 type ViewMode = 'month' | 'week' | 'day';
 
@@ -42,7 +43,7 @@ function getNextDateForDayOfWeek(dayOfWeek: number, fromDate: Date): Date {
 }
 
 export function CalendarTab({ showRepeatModal = false, setShowRepeatModal }: CalendarTabProps = {}) {
-  const { events, categories, settings, updateEvent, addEvent } = usePlanner();
+  const { events, categories, settings, updateEvent, addEvent, user } = usePlanner();
   const theme = getPlannerTheme(settings);
   const [viewMode, setViewMode] = useState<ViewMode>('month');
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -50,6 +51,21 @@ export function CalendarTab({ showRepeatModal = false, setShowRepeatModal }: Cal
   const [selectedEvent, setSelectedEvent] = useState<string | null>(null);
   const [showEventSheet, setShowEventSheet] = useState(false);
   const [isMonthExpanded, setIsMonthExpanded] = useState(false);
+
+  // 파트너 일정
+  const [partnerEvents, setPartnerEvents] = useState<CalendarEvent[]>([]);
+  const [showPartner, setShowPartner] = useState(true);
+  useEffect(() => {
+    if (!user) return;
+    getMyConnection(user.id).then(async conn => {
+      if (conn?.status !== 'active') return;
+      const partnerId = conn.userId === user.id ? conn.partnerId : conn.userId;
+      if (!partnerId) return;
+      const ym = format(currentDate, 'yyyy-MM');
+      const pEvents = await fetchPartnerEvents(user.id, partnerId, ym);
+      setPartnerEvents(pEvents);
+    });
+  }, [user, currentDate]);
 
   // 운동일정 등록 모달
   const [showWorkoutModal, setShowWorkoutModal] = useState(false);
@@ -328,7 +344,7 @@ export function CalendarTab({ showRepeatModal = false, setShowRepeatModal }: Cal
                   </div>
 
                   <div className={`${expanded ? 'mt-6 md:mt-9 flex flex-wrap gap-0.5' : 'mt-5 md:mt-6 flex flex-wrap gap-0.5'}`}>
-                    {dayEvents.slice(0, 12).map(event => (
+                    {dayEvents.slice(0, 10).map(event => (
                       <div
                         key={event.id}
                         draggable
@@ -338,21 +354,23 @@ export function CalendarTab({ showRepeatModal = false, setShowRepeatModal }: Cal
                           e.dataTransfer.setData('text/plain', eventData);
                           e.dataTransfer.effectAllowed = 'move';
                         }}
-                        onDragEnd={(e) => {
-                          e.stopPropagation();
-                        }}
-                        onClick={e => {
-                            e.stopPropagation();
-                            openExistingEvent(event.id, day);
-                        }}
+                        onDragEnd={(e) => { e.stopPropagation(); }}
+                        onClick={e => { e.stopPropagation(); openExistingEvent(event.id, day); }}
                         className="flex items-center gap-0.5 cursor-grab active:cursor-grabbing"
                       >
                         <div className="h-1.5 w-2 md:h-2 md:w-2.5 rounded-full shrink-0" style={{ backgroundColor: getCategoryColor(event.categoryId) }} />
                       </div>
                     ))}
-                      {dayEvents.length > 12 && (
+                    {/* 파트너 일정 (하트 점) */}
+                    {showPartner && partnerEvents
+                      .filter(e => e.date === format(day, 'yyyy-MM-dd'))
+                      .slice(0, 3)
+                      .map(e => (
+                        <div key={`p-${e.id}`} title={`💑 ${e.title}`} className="h-1.5 w-1.5 md:h-2 md:w-2 rounded-full shrink-0" style={{ backgroundColor: '#f43f5e' }} />
+                      ))}
+                    {dayEvents.length > 10 && (
                       <div className="text-[9px] md:text-[10px] font-medium" style={{ color: theme.textMuted }}>
-                        +{dayEvents.length - 12}
+                        +{dayEvents.length - 10}
                       </div>
                     )}
                   </div>
@@ -742,6 +760,21 @@ export function CalendarTab({ showRepeatModal = false, setShowRepeatModal }: Cal
               </span>
             )}
           </button>
+
+          {partnerEvents.length > 0 && (
+            <button
+              onClick={() => setShowPartner(v => !v)}
+              className="flex items-center gap-2 rounded-2xl px-3 py-2 font-semibold transition-transform duration-200 hover:translate-y-[-1px]"
+              style={{
+                background: showPartner ? '#f43f5e20' : theme.navBackground,
+                color: showPartner ? '#f43f5e' : theme.textSecondary,
+              }}
+              title="파트너 일정 표시/숨기기"
+            >
+              <Heart className="w-4 h-4" />
+              <span className="hidden sm:inline text-sm">파트너</span>
+            </button>
+          )}
 
           <button
             onClick={openWorkoutModal}

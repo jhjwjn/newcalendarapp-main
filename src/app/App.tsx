@@ -4,7 +4,7 @@ import { PlannerProvider } from './context/PlannerContext';
 import { HealthProvider } from './context/HealthContext';
 import { PlannerApp } from './components/planner/PlannerApp';
 import { HealthApp } from './components/health/HealthApp';
-import { AppToaster } from './lib/toast';
+import { AppNotificationHost } from './components/shared/AppNotificationHost';
 
 export default function App() {
   const [currentApp, setCurrentApp] = useState<'planner' | 'health'>('planner');
@@ -47,10 +47,10 @@ export default function App() {
                 </motion.div>
               )}
             </AnimatePresence>
-          </LayoutGroup>
+            <AppNotificationHost />
+      </LayoutGroup>
         </HealthProvider>
       </PlannerProvider>
-      <AppToaster />
     </>
   );
 }

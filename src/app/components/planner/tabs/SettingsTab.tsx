@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   Moon,
@@ -13,11 +13,22 @@ import {
   EyeOff,
   Cloud,
   CloudOff,
+  Heart,
+  Link2,
+  LinkOff,
+  Copy,
 } from 'lucide-react';
 import { toast } from '../../../lib/toast';
 import { usePlanner } from '../../../context/PlannerContext';
 import { getPlannerTheme } from '../../../lib/plannerTheme';
 import { PLANNER_GLASS_THEMES } from '../../../styles/colorThemes';
+import {
+  getMyConnection,
+  createConnectionCode,
+  acceptConnectionCode,
+  disconnectPartner,
+  PartnerConnection,
+} from '../../../lib/partnerCalendar';
 
 const ACCENT_OPTIONS: { id: 'blue' | 'purple' | 'peach' | 'black'; name: string }[] = [
   { id: 'blue', name: 'Ocean' },
@@ -36,6 +47,57 @@ export function SettingsTab() {
   const [isSavingName, setIsSavingName] = useState(false);
   const [isSavingKey, setIsSavingKey] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+
+  // 파트너 연결 상태
+  const [partnerConn, setPartnerConn] = useState<PartnerConnection | null>(null);
+  const [partnerCode, setPartnerCode] = useState('');
+  const [codeInput, setCodeInput] = useState('');
+  const [partnerLoading, setPartnerLoading] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      getMyConnection(user.id).then(setPartnerConn);
+    }
+  }, [user]);
+
+  const handleGenerateCode = async () => {
+    if (!user) return;
+    setPartnerLoading(true);
+    const code = await createConnectionCode(user.id);
+    if (code) {
+      setPartnerCode(code);
+      const conn = await getMyConnection(user.id);
+      setPartnerConn(conn);
+    }
+    setPartnerLoading(false);
+  };
+
+  const handleAcceptCode = async () => {
+    if (!user || !codeInput.trim()) return;
+    setPartnerLoading(true);
+    const result = await acceptConnectionCode(user.id, codeInput.trim());
+    if (result === 'ok') {
+      toast.success('파트너와 연결되었습니다!');
+      const conn = await getMyConnection(user.id);
+      setPartnerConn(conn);
+      setCodeInput('');
+    } else if (result === 'self') {
+      toast.error('본인의 코드는 사용할 수 없습니다');
+    } else {
+      toast.error('유효하지 않은 코드입니다');
+    }
+    setPartnerLoading(false);
+  };
+
+  const handleDisconnect = async () => {
+    if (!partnerConn) return;
+    setPartnerLoading(true);
+    await disconnectPartner(partnerConn.id);
+    setPartnerConn(null);
+    setPartnerCode('');
+    toast.info('파트너 연결이 해제되었습니다');
+    setPartnerLoading(false);
+  };
 
   const handleSaveName = async () => {
     setIsSavingName(true);
@@ -175,6 +237,91 @@ export function SettingsTab() {
               </div>
             )}
           </div>
+
+          {/* 파트너 연결 (커플 캘린더) */}
+          {session && (
+            <div className="rounded-2xl border p-4 md:p-5" style={{ background: theme.panelBackground, borderColor: theme.panelBorder }}>
+              <div className="flex items-center gap-2 mb-4">
+                <Heart className="h-4 w-4" style={{ color: '#f43f5e' }} />
+                <h2 className="text-xs font-semibold uppercase tracking-widest" style={{ color: theme.textMuted }}>
+                  커플 캘린더
+                </h2>
+              </div>
+
+              {partnerConn?.status === 'active' ? (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 rounded-2xl p-3" style={{ background: `#f43f5e15` }}>
+                    <Link2 className="h-4 w-4" style={{ color: '#f43f5e' }} />
+                    <p className="text-sm font-semibold" style={{ color: theme.text }}>파트너와 연결됨</p>
+                  </div>
+                  <button
+                    onClick={handleDisconnect}
+                    disabled={partnerLoading}
+                    className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold border"
+                    style={{ borderColor: theme.line, color: '#f43f5e' }}
+                  >
+                    <LinkOff className="h-3.5 w-3.5" /> 연결 해제
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {/* 코드 생성 */}
+                  <div>
+                    <p className="text-xs mb-2" style={{ color: theme.textMuted }}>내 연결 코드 생성</p>
+                    {partnerConn?.connectionCode || partnerCode ? (
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 rounded-2xl border px-4 py-2.5 text-center text-xl font-black tracking-widest" style={{ background: theme.navBackground, borderColor: theme.line, color: theme.primary }}>
+                          {partnerConn?.connectionCode || partnerCode}
+                        </div>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(partnerConn?.connectionCode || partnerCode);
+                            toast.success('코드가 복사되었습니다');
+                          }}
+                          className="rounded-xl border p-2.5"
+                          style={{ borderColor: theme.line, color: theme.textMuted }}
+                        >
+                          <Copy className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={handleGenerateCode}
+                        disabled={partnerLoading}
+                        className="w-full rounded-2xl py-2.5 text-sm font-semibold"
+                        style={{ background: theme.navBackground, color: theme.textSecondary, border: `1px solid ${theme.line}` }}
+                      >
+                        {partnerLoading ? '생성 중...' : '코드 생성'}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* 코드 입력 */}
+                  <div>
+                    <p className="text-xs mb-2" style={{ color: theme.textMuted }}>파트너 코드 입력</p>
+                    <div className="flex gap-2">
+                      <input
+                        value={codeInput}
+                        onChange={e => setCodeInput(e.target.value.toUpperCase())}
+                        maxLength={6}
+                        placeholder="XXXXXX"
+                        className="flex-1 rounded-2xl border px-4 py-2.5 text-center text-lg font-black tracking-widest outline-none uppercase"
+                        style={{ background: theme.navBackground, borderColor: theme.line, color: theme.text }}
+                      />
+                      <button
+                        onClick={handleAcceptCode}
+                        disabled={partnerLoading || codeInput.length !== 6}
+                        className="rounded-2xl px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50"
+                        style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.secondary})` }}
+                      >
+                        연결
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* 프로필 */}
           <div

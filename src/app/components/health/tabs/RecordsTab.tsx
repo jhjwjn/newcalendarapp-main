@@ -5,6 +5,7 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay } from 'dat
 import { ko } from 'date-fns/locale';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from '../../../lib/toast';
+import { WorkoutFeedback } from '../WorkoutFeedback';
 
 interface RecordsTabProps {
   theme: any;
@@ -50,6 +51,9 @@ export function RecordsTab({ theme }: RecordsTabProps) {
         </p>
         <h1 className="text-2xl font-black" style={{ color: theme.text }}>운동 기록</h1>
       </div>
+
+      {/* AI 운동 균형 분석 */}
+      <WorkoutFeedback theme={theme} />
 
       {/* 요약 통계 */}
       <div className="grid grid-cols-3 gap-3">
