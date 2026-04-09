@@ -815,18 +815,18 @@ export function CalendarTab({ showRepeatModal = false, setShowRepeatModal }: Cal
         {showWorkoutModal && (
           <>
             <motion.div
-              className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
+              className="fixed inset-0 z-40 bg-black/50"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setShowWorkoutModal(false)}
             />
             <motion.div
-              className="fixed inset-x-4 top-1/2 z-50 -translate-y-1/2 rounded-[28px] border p-5 sm:inset-x-auto sm:left-1/2 sm:w-[400px] sm:-translate-x-1/2"
+              className="fixed inset-x-4 top-[5%] z-50 mx-auto max-h-[88vh] max-w-[440px] overflow-y-auto rounded-[28px] border p-5 sm:left-0 sm:right-0"
               style={{ background: theme.panelBackgroundStrong, borderColor: theme.panelBorder, boxShadow: theme.panelShadow }}
-              initial={{ opacity: 0, scale: 0.95, y: '-45%' }}
-              animate={{ opacity: 1, scale: 1, y: '-50%' }}
-              exit={{ opacity: 0, scale: 0.95, y: '-45%' }}
+              initial={{ opacity: 0, scale: 0.96, y: -12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: -8 }}
               transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
             >
               <div className="mb-4 flex items-center justify-between">

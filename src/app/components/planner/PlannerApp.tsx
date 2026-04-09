@@ -11,6 +11,7 @@ import { StudyTab } from './tabs/StudyTab';
 import { NotesTab } from './tabs/NotesTab';
 import { StatsTab } from './tabs/StatsTab';
 import { SettingsTab } from './tabs/SettingsTab';
+import { AIFloatingButton } from '../shared/AIFloatingButton';
 
 type TabType = 'home' | 'calendar' | 'habits' | 'study' | 'notes' | 'stats' | 'settings';
 
@@ -156,6 +157,9 @@ export function PlannerApp({ onSwitchApp }: PlannerAppProps) {
           </div>
         </div>
       </main>
+
+      {/* AI 플로팅 버튼 */}
+      <AIFloatingButton />
 
       {/* 모바일 하단 탭바 */}
       <nav

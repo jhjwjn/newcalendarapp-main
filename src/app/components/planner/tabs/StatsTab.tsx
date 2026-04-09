@@ -13,9 +13,9 @@ export function StatsTab() {
   const today = new Date();
   const todayStr = format(today, 'yyyy-MM-dd');
 
-  // 최근 30일 이벤트 히트맵
+  // 최근 182일 이벤트 히트맵
   const last30Days = useMemo(() => {
-    return eachDayOfInterval({ start: subDays(today, 29), end: today });
+    return eachDayOfInterval({ start: subDays(today, 181), end: today });
   }, []);
 
   const activityData = useMemo(() => {
@@ -132,9 +132,9 @@ export function StatsTab() {
         className="rounded-2xl border p-4 md:p-5"
         style={{ background: theme.panelBackground, borderColor: theme.panelBorder }}
       >
-        <h2 className="text-sm font-bold mb-3" style={{ color: theme.text }}>최근 30일 활동</h2>
+        <h2 className="text-sm font-bold mb-3" style={{ color: theme.text }}>최근 6개월 활동</h2>
         <div className="flex flex-wrap gap-[3px]">
-          {activityData.slice(-30).map((day, idx) => {
+          {activityData.map((day, idx) => {
             const intensity = day.activity / maxActivity;
             return (
               <div

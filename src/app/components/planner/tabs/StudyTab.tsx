@@ -1161,7 +1161,7 @@ export function StudyTab() {
   };
 
   return (
-    <div className="mx-auto max-w-[980px] p-3 md:p-3">
+    <div className="w-full p-3 md:p-5">
       {/* 모바일 모드 탭 (상단 스크롤 가능) */}
       <div className="mb-3 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] md:hidden">
         {modeTabs.map(tab => {
@@ -1185,7 +1185,7 @@ export function StudyTab() {
         })}
       </div>
 
-      <div className="flex min-h-[600px] flex-col gap-2 md:grid md:grid-cols-[152px_minmax(0,1fr)] md:gap-3">
+      <div className="flex min-h-[calc(100vh-14rem)] flex-col gap-2 md:grid md:grid-cols-[180px_minmax(0,1fr)] md:gap-4">
         <div className="hidden md:block">
           <aside
             className="rounded-xl md:rounded-[22px] border p-2 md:p-2.5"

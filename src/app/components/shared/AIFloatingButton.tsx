@@ -864,7 +864,7 @@ JSON 형식으로 응답:
     <>
       <motion.button
         onClick={() => setIsOpen(true)}
-        className={`fixed bottom-24 right-4 z-50 flex h-14 w-14 items-center justify-center rounded-full shadow-lg ${className}`}
+        className={`fixed bottom-24 right-4 z-50 flex h-14 w-14 items-center justify-center rounded-full shadow-lg md:bottom-6 md:right-6 ${className}`}
         style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.accent1})` }}
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.95 }}
