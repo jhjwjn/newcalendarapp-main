@@ -64,66 +64,66 @@ export const PLANNER_GLASS_THEMES_DARK = {
   },
 } as const;
 
-// 헬스 앱 Dynamic 스타일 색상 (강렬하고 역동적으로)
+// 헬스 앱 Dynamic 스타일 색상 (라이트모드)
 export const HEALTH_DYNAMIC_THEMES = {
   orange: {
-    primary: '#F97316',     // 비비드 오렌지
-    secondary: '#EA580C',   // 딥 오렌지
-    tertiary: '#FB923C',    // 라이트 오렌지
+    primary: '#8B5CF6',     // 바이올렛 — Cosmic
+    secondary: '#7C3AED',   // 딥 퍼플
+    tertiary: '#A78BFA',    // 소프트 라벤더
+    accent1: '#EC4899',     // 핫 핑크 포인트
+    accent2: '#06B6D4',     // 사이언 보색
+  },
+  red: {
+    primary: '#06B6D4',     // 사이언 — Neo
+    secondary: '#0891B2',   // 딥 사이언
+    tertiary: '#67E8F9',    // 라이트 사이언
+    accent1: '#8B5CF6',     // 퍼플 포인트
+    accent2: '#10B981',     // 에메랄드 보색
+  },
+  blue: {
+    primary: '#F59E0B',     // 앰버 골드 — Ember
+    secondary: '#D97706',   // 딥 앰버
+    tertiary: '#FCD34D',    // 라이트 골드
     accent1: '#EF4444',     // 레드 포인트
     accent2: '#8B5CF6',     // 퍼플 보색
   },
-  red: {
-    primary: '#E11D48',     // 크림슨 레드
-    secondary: '#BE123C',   // 딥 로즈
-    tertiary: '#FB7185',    // 라이트 핑크
-    accent1: '#F97316',     // 오렌지 포인트
-    accent2: '#7C3AED',     // 퍼플 보색
-  },
-  blue: {
-    primary: '#2563EB',     // 로얄 블루
-    secondary: '#1D4ED8',   // 딥 블루
-    tertiary: '#60A5FA',    // 스카이 블루
-    accent1: '#7C3AED',     // 퍼플 포인트
-    accent2: '#06B6D4',     // 사이언 보색
-  },
   teal: {
-    primary: '#0D9488',     // 틸 그린
-    secondary: '#0F766E',   // 딥 틸
-    tertiary: '#2DD4BF',    // 라이트 틸
-    accent1: '#6366F1',     // 인디고 포인트
-    accent2: '#F59E0B',     // 앰버 보색
+    primary: '#EC4899',     // 로즈 마젠타 — Bloom
+    secondary: '#DB2777',   // 딥 핑크
+    tertiary: '#F9A8D4',    // 소프트 로즈
+    accent1: '#8B5CF6',     // 퍼플 포인트
+    accent2: '#F59E0B',     // 골드 보색
   },
 } as const;
 
 // 헬스 앱 다크모드 Dynamic 스타일 (더 강렬한 네온/비비드 계열)
 export const HEALTH_DYNAMIC_THEMES_DARK = {
   orange: {
-    primary: '#FB923C',     // 네온 오렌지
-    secondary: '#F97316',   // 비비드 오렌지
-    tertiary: '#FDBA74',    // 소프트 오렌지
-    accent1: '#F43F5E',     // 네온 레드
-    accent2: '#A855F7',     // 네온 퍼플
+    primary: '#A78BFA',     // 네온 바이올렛 — Cosmic
+    secondary: '#8B5CF6',   // 비비드 퍼플
+    tertiary: '#C4B5FD',    // 소프트 라벤더
+    accent1: '#F472B6',     // 네온 핑크
+    accent2: '#22D3EE',     // 사이언
   },
   red: {
-    primary: '#F43F5E',     // 네온 핑크레드
-    secondary: '#E11D48',   // 크림슨
-    tertiary: '#FDA4AF',    // 소프트 로즈
-    accent1: '#FB923C',     // 네온 오렌지
-    accent2: '#A855F7',     // 네온 퍼플
-  },
-  blue: {
-    primary: '#60A5FA',     // 네온 블루
-    secondary: '#3B82F6',   // 비비드 블루
-    tertiary: '#93C5FD',    // 소프트 블루
+    primary: '#22D3EE',     // 네온 사이언 — Neo
+    secondary: '#06B6D4',   // 비비드 사이언
+    tertiary: '#67E8F9',    // 소프트 사이언
     accent1: '#A78BFA',     // 라벤더
     accent2: '#34D399',     // 에메랄드
   },
+  blue: {
+    primary: '#FBBF24',     // 네온 골드 — Ember
+    secondary: '#F59E0B',   // 비비드 앰버
+    tertiary: '#FDE68A',    // 소프트 옐로우
+    accent1: '#F87171',     // 소프트 레드
+    accent2: '#A78BFA',     // 라벤더
+  },
   teal: {
-    primary: '#2DD4BF',     // 네온 틸
-    secondary: '#0D9488',   // 비비드 틸
-    tertiary: '#5EEAD4',    // 소프트 틸
-    accent1: '#818CF8',     // 인디고
+    primary: '#F472B6',     // 네온 핑크 — Bloom
+    secondary: '#EC4899',   // 비비드 로즈
+    tertiary: '#FBCFE8',    // 소프트 핑크
+    accent1: '#A78BFA',     // 라벤더
     accent2: '#FBBF24',     // 골든
   },
 };

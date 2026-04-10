@@ -245,23 +245,29 @@ export function CalendarTab({ showRepeatModal = false, setShowRepeatModal }: Cal
     const plan = weekPlansData.find((p: any) => p.weekNumber === workoutModalWeek);
     const today = new Date();
     const workoutCategoryId = categories.find(c => c.name === '운동')?.id || categories[0]?.id || '';
-    for (const dayOfWeek of Array.from(workoutModalSelectedDays).sort()) {
+    const selectedDays = Array.from(workoutModalSelectedDays).sort();
+    const count = selectedDays.length;
+    await Promise.all(selectedDays.map(async (dayOfWeek) => {
       const dayPlan = plan?.days.find((d: any) => d.dayOfWeek === dayOfWeek);
       const times = workoutModalDayTimes[dayOfWeek] || { startTime: '07:00', endTime: '08:00' };
       const targetDate = getNextDateForDayOfWeek(dayOfWeek, today);
       const title = dayPlan?.routineName || `운동 - ${DAY_LABELS[dayOfWeek]}요일`;
-      await addEvent({
-        title,
-        date: format(targetDate, 'yyyy-MM-dd'),
-        startTime: times.startTime,
-        endTime: times.endTime,
-        categoryId: workoutCategoryId,
-        memo: '',
-      });
-    }
+      try {
+        await addEvent({
+          title,
+          date: format(targetDate, 'yyyy-MM-dd'),
+          startTime: times.startTime,
+          endTime: times.endTime,
+          categoryId: workoutCategoryId,
+          memo: '',
+        });
+      } catch {
+        // ignore individual failures; continue registering other days
+      }
+    }));
     setShowWorkoutModal(false);
     setRightPanelMode('default');
-    toast.success(`${workoutModalSelectedDays.size}개의 운동 일정이 등록되었습니다`);
+    toast.success(`${count}개의 운동 일정이 등록되었습니다`);
   };
 
   const openExistingEvent = (eventId: string, date?: Date) => {

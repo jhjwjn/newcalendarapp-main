@@ -20,16 +20,19 @@ export async function getMyConnection(userId: string): Promise<PartnerConnection
     .from('partner_connections')
     .select('*')
     .or(`user_id.eq.${userId},partner_id.eq.${userId}`)
-    .maybeSingle();
+    .order('created_at', { ascending: false });
 
-  if (error || !data) return null;
+  if (error || !data || data.length === 0) return null;
+
+  // Prefer active connection, otherwise take the most recent
+  const row = data.find(d => d.status === 'active') || data[0];
 
   return {
-    id: data.id,
-    userId: data.user_id,
-    partnerId: data.partner_id,
-    connectionCode: data.connection_code,
-    status: data.status,
+    id: row.id,
+    userId: row.user_id,
+    partnerId: row.partner_id,
+    connectionCode: row.connection_code,
+    status: row.status,
   };
 }
 

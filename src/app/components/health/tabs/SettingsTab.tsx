@@ -8,10 +8,10 @@ import { toast } from '../../../lib/toast';
 type AccentColor = 'orange' | 'red' | 'blue' | 'teal';
 
 const ACCENT_OPTIONS: { id: AccentColor; name: string; emoji: string }[] = [
-  { id: 'orange', name: 'Energy', emoji: '🔥' },
-  { id: 'red', name: 'Power', emoji: '💪' },
-  { id: 'blue', name: 'Focus', emoji: '⚡' },
-  { id: 'teal', name: 'Zen', emoji: '🌿' },
+  { id: 'orange', name: 'Cosmic', emoji: '🔮' },
+  { id: 'red', name: 'Neo', emoji: '⚡' },
+  { id: 'blue', name: 'Ember', emoji: '✨' },
+  { id: 'teal', name: 'Bloom', emoji: '🌸' },
 ];
 
 interface SettingsTabProps {
