@@ -71,8 +71,7 @@ export function CalendarTab({ showRepeatModal = false, setShowRepeatModal }: Cal
   const [showWorkoutModal, setShowWorkoutModal] = useState(false);
   const [workoutModalWeek, setWorkoutModalWeek] = useState(1);
   const [workoutModalSelectedDays, setWorkoutModalSelectedDays] = useState<Set<number>>(new Set());
-  const [workoutModalStartTime, setWorkoutModalStartTime] = useState('07:00');
-  const [workoutModalEndTime, setWorkoutModalEndTime] = useState('08:00');
+  const [workoutModalDayTimes, setWorkoutModalDayTimes] = useState<Record<number, { startTime: string; endTime: string }>>({});
   const [weekPlansData, setWeekPlansData] = useState<any[]>([]);
 
   // Drag state
@@ -144,12 +143,17 @@ export function CalendarTab({ showRepeatModal = false, setShowRepeatModal }: Cal
       if (plan) {
         const days = plan.days.filter((d: any) => !d.isRestDay && d.exercises.length > 0).map((d: any) => d.dayOfWeek);
         setWorkoutModalSelectedDays(new Set(days));
+        const times: Record<number, { startTime: string; endTime: string }> = {};
+        days.forEach((d: number) => { times[d] = { startTime: '07:00', endTime: '08:00' }; });
+        setWorkoutModalDayTimes(times);
       } else {
         setWorkoutModalSelectedDays(new Set());
+        setWorkoutModalDayTimes({});
       }
     } catch {
       setWeekPlansData([]);
       setWorkoutModalSelectedDays(new Set());
+      setWorkoutModalDayTimes({});
     }
     setWorkoutModalWeek(1);
     setShowWorkoutModal(true);
@@ -161,8 +165,12 @@ export function CalendarTab({ showRepeatModal = false, setShowRepeatModal }: Cal
     if (plan) {
       const days = plan.days.filter((d: any) => !d.isRestDay && d.exercises.length > 0).map((d: any) => d.dayOfWeek);
       setWorkoutModalSelectedDays(new Set(days));
+      const times: Record<number, { startTime: string; endTime: string }> = {};
+      days.forEach((d: number) => { times[d] = workoutModalDayTimes[d] || { startTime: '07:00', endTime: '08:00' }; });
+      setWorkoutModalDayTimes(times);
     } else {
       setWorkoutModalSelectedDays(new Set());
+      setWorkoutModalDayTimes({});
     }
   };
 
@@ -172,17 +180,16 @@ export function CalendarTab({ showRepeatModal = false, setShowRepeatModal }: Cal
     const workoutCategoryId = categories.find(c => c.name === '운동')?.id || categories[0]?.id || '';
     for (const dayOfWeek of Array.from(workoutModalSelectedDays).sort()) {
       const dayPlan = plan?.days.find((d: any) => d.dayOfWeek === dayOfWeek);
-      const exercises: any[] = dayPlan?.exercises || [];
-      const memo = exercises.map((ex: any) => `${ex.name} ${ex.sets.length}세트`).join('\n');
+      const times = workoutModalDayTimes[dayOfWeek] || { startTime: '07:00', endTime: '08:00' };
       const targetDate = getNextDateForDayOfWeek(dayOfWeek, today);
       const title = dayPlan?.routineName || `운동 - ${DAY_LABELS[dayOfWeek]}요일`;
       await addEvent({
         title,
         date: format(targetDate, 'yyyy-MM-dd'),
-        startTime: workoutModalStartTime,
-        endTime: workoutModalEndTime,
+        startTime: times.startTime,
+        endTime: times.endTime,
         categoryId: workoutCategoryId,
-        memo,
+        memo: '',
       });
     }
     setShowWorkoutModal(false);
@@ -892,54 +899,79 @@ export function CalendarTab({ showRepeatModal = false, setShowRepeatModal }: Cal
                 </div>
               </div>
 
-              {/* 운동 요일 */}
-              <div className="mb-4">
-                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-widest" style={{ color: theme.textMuted }}>운동 요일 (헬스앱 계획 기준 자동 선택)</label>
-                <div className="flex gap-2">
+              {/* 요일별 시간 설정 */}
+              <div className="mb-5">
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-widest" style={{ color: theme.textMuted }}>요일별 운동 시간 설정</label>
+                <div className="space-y-2">
                   {DAY_LABELS.map((label, idx) => {
                     const selected = workoutModalSelectedDays.has(idx);
+                    const times = workoutModalDayTimes[idx] || { startTime: '07:00', endTime: '08:00' };
                     return (
-                      <button
-                        key={idx}
-                        onClick={() => {
-                          const next = new Set(workoutModalSelectedDays);
-                          if (next.has(idx)) next.delete(idx); else next.add(idx);
-                          setWorkoutModalSelectedDays(next);
-                        }}
-                        className="flex-1 rounded-2xl py-2 text-sm font-semibold"
-                        style={{
-                          background: selected ? theme.primary : theme.navBackground,
-                          color: selected ? '#fff' : theme.textMuted,
-                        }}
-                      >
-                        {label}
-                      </button>
+                      <div key={idx} className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            const next = new Set(workoutModalSelectedDays);
+                            if (next.has(idx)) {
+                              next.delete(idx);
+                            } else {
+                              next.add(idx);
+                              if (!workoutModalDayTimes[idx]) {
+                                setWorkoutModalDayTimes(prev => ({ ...prev, [idx]: { startTime: '07:00', endTime: '08:00' } }));
+                              }
+                            }
+                            setWorkoutModalSelectedDays(next);
+                          }}
+                          className="flex items-center gap-2 shrink-0"
+                        >
+                          <div
+                            className="h-5 w-5 rounded-md flex items-center justify-center transition-all border-2"
+                            style={{
+                              background: selected ? theme.primary : 'transparent',
+                              borderColor: selected ? theme.primary : theme.line,
+                            }}
+                          >
+                            {selected && (
+                              <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                              </svg>
+                            )}
+                          </div>
+                          <span className="text-sm font-bold w-5 text-center" style={{ color: selected ? theme.text : theme.textMuted }}>
+                            {label}
+                          </span>
+                        </button>
+                        <input
+                          type="time"
+                          value={times.startTime}
+                          onChange={e => setWorkoutModalDayTimes(prev => ({ ...prev, [idx]: { ...times, startTime: e.target.value } }))}
+                          disabled={!selected}
+                          className="flex-1 rounded-xl border px-2 py-1.5 text-xs transition-all"
+                          style={{
+                            background: selected ? theme.navBackground : theme.line,
+                            color: selected ? theme.text : theme.textMuted,
+                            borderColor: theme.line,
+                            opacity: selected ? 1 : 0.5,
+                            cursor: selected ? 'default' : 'not-allowed',
+                          }}
+                        />
+                        <span className="text-xs shrink-0" style={{ color: theme.textMuted }}>~</span>
+                        <input
+                          type="time"
+                          value={times.endTime}
+                          onChange={e => setWorkoutModalDayTimes(prev => ({ ...prev, [idx]: { ...times, endTime: e.target.value } }))}
+                          disabled={!selected}
+                          className="flex-1 rounded-xl border px-2 py-1.5 text-xs transition-all"
+                          style={{
+                            background: selected ? theme.navBackground : theme.line,
+                            color: selected ? theme.text : theme.textMuted,
+                            borderColor: theme.line,
+                            opacity: selected ? 1 : 0.5,
+                            cursor: selected ? 'default' : 'not-allowed',
+                          }}
+                        />
+                      </div>
                     );
                   })}
-                </div>
-              </div>
-
-              {/* 시간 선택 */}
-              <div className="mb-5 grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-widest" style={{ color: theme.textMuted }}>시작 시간</label>
-                  <input
-                    type="time"
-                    value={workoutModalStartTime}
-                    onChange={e => setWorkoutModalStartTime(e.target.value)}
-                    className="w-full rounded-2xl border px-3 py-2.5 text-sm"
-                    style={{ background: theme.navBackground, color: theme.text, borderColor: theme.line }}
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-widest" style={{ color: theme.textMuted }}>종료 시간</label>
-                  <input
-                    type="time"
-                    value={workoutModalEndTime}
-                    onChange={e => setWorkoutModalEndTime(e.target.value)}
-                    className="w-full rounded-2xl border px-3 py-2.5 text-sm"
-                    style={{ background: theme.navBackground, color: theme.text, borderColor: theme.line }}
-                  />
                 </div>
               </div>
 

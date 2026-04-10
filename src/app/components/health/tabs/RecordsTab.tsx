@@ -1,11 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { useHealth } from '../../../context/HealthContext';
-import { ChevronLeft, ChevronRight, Flame, Trash2, Clock, Dumbbell } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Flame, Trash2, Clock, Dumbbell, Link2 } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from '../../../lib/toast';
 import { WorkoutFeedback } from '../WorkoutFeedback';
+import { syncWorkoutRecordToPlannedEvent } from '../../../lib/plannerWorkoutSync';
 
 interface RecordsTabProps {
   theme: any;
@@ -32,6 +33,15 @@ export function RecordsTab({ theme }: RecordsTabProps) {
   const handleDelete = async (id: string) => {
     await deleteWorkoutRecord(id);
     toast.success('운동 기록이 삭제되었습니다');
+  };
+
+  const handleLinkToCalendar = (record: NonNullable<ReturnType<typeof getRecordByDate>>) => {
+    const result = syncWorkoutRecordToPlannedEvent(record);
+    if (result.status === 'updated') {
+      toast.success('캘린더 운동 일정에 기록이 연결되었습니다!');
+    } else {
+      toast.info('매칭되는 운동 일정을 찾지 못했습니다. 캘린더앱에서 먼저 운동 일정을 등록해주세요.');
+    }
   };
 
   const getWorkoutDuration = (record: typeof selectedRecord) => {
@@ -164,13 +174,24 @@ export function RecordsTab({ theme }: RecordsTabProps) {
                   {format(selectedDate, 'M월 d일 (E)', { locale: ko })}
                 </h3>
                 {selectedRecord && (
-                  <button
-                    onClick={() => handleDelete(selectedRecord.id)}
-                    className="p-1.5 rounded-xl text-red-400"
-                    style={{ background: 'rgba(239,68,68,0.1)' }}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => handleLinkToCalendar(selectedRecord)}
+                      className="flex items-center gap-1 p-1.5 rounded-xl text-xs font-semibold"
+                      style={{ background: `${theme.primary}15`, color: theme.primary }}
+                      title="캘린더 운동 일정에 이 기록 연결"
+                    >
+                      <Link2 className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">캘린더 연결</span>
+                    </button>
+                    <button
+                      onClick={() => handleDelete(selectedRecord.id)}
+                      className="p-1.5 rounded-xl text-red-400"
+                      style={{ background: 'rgba(239,68,68,0.1)' }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -263,20 +284,30 @@ export function RecordsTab({ theme }: RecordsTabProps) {
                   className="flex items-center justify-between rounded-xl p-3"
                   style={{ background: theme.navBackground }}
                 >
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold" style={{ color: theme.text }}>
                       {format(new Date(record.date), 'M월 d일 (E)', { locale: ko })}
                     </p>
-                    <p className="text-xs mt-0.5" style={{ color: theme.textMuted }}>
+                    <p className="text-xs mt-0.5 truncate" style={{ color: theme.textMuted }}>
                       {record.exercises.map(e => e.name).join(' · ')}
                     </p>
                   </div>
-                  <span
-                    className="text-xs font-bold px-2.5 py-1 rounded-xl"
-                    style={{ background: `${theme.primary}15`, color: theme.primary }}
-                  >
-                    {record.totalVolume.toLocaleString()} kg
-                  </span>
+                  <div className="flex items-center gap-2 shrink-0 ml-2">
+                    <button
+                      onClick={() => handleLinkToCalendar(record)}
+                      className="p-1.5 rounded-lg"
+                      style={{ background: `${theme.primary}12`, color: theme.primary }}
+                      title="캘린더에 연결"
+                    >
+                      <Link2 className="h-3.5 w-3.5" />
+                    </button>
+                    <span
+                      className="text-xs font-bold px-2.5 py-1 rounded-xl"
+                      style={{ background: `${theme.primary}15`, color: theme.primary }}
+                    >
+                      {record.totalVolume.toLocaleString()} kg
+                    </span>
+                  </div>
                 </div>
               ))}
           </div>
