@@ -5,13 +5,13 @@ import { motion } from 'motion/react';
 import { HEALTH_DYNAMIC_THEMES } from '../../../styles/colorThemes';
 import { toast } from '../../../lib/toast';
 
-type AccentColor = 'orange' | 'red' | 'blue' | 'black';
+type AccentColor = 'orange' | 'red' | 'blue' | 'teal';
 
-const ACCENT_OPTIONS: { id: AccentColor; name: string }[] = [
-  { id: 'orange', name: 'Energy' },
-  { id: 'red', name: 'Power' },
-  { id: 'blue', name: 'Focus' },
-  { id: 'black', name: 'Mono' },
+const ACCENT_OPTIONS: { id: AccentColor; name: string; emoji: string }[] = [
+  { id: 'orange', name: 'Energy', emoji: '🔥' },
+  { id: 'red', name: 'Power', emoji: '💪' },
+  { id: 'blue', name: 'Focus', emoji: '⚡' },
+  { id: 'teal', name: 'Zen', emoji: '🌿' },
 ];
 
 interface SettingsTabProps {
@@ -184,11 +184,15 @@ export function SettingsTab({ theme }: SettingsTabProps) {
                 const isSelected = currentAccent === opt.id;
                 return (
                   <button key={opt.id} onClick={() => handleAccentChange(opt.id)}
-                    className="rounded-2xl p-3 text-center border transition-all"
-                    style={{ background: isSelected ? `${colors.primary}12` : theme.navBackground, borderColor: isSelected ? colors.primary : theme.line }}>
-                    <div className="h-5 w-full rounded-lg mb-2" style={{ background: `linear-gradient(135deg, ${colors.primary}, ${colors.accent1})` }} />
-                    <span className="text-[11px] font-semibold" style={{ color: isSelected ? colors.primary : theme.textMuted }}>{opt.name}</span>
-                    {isSelected && <div className="flex justify-center mt-1"><Check className="h-3 w-3" style={{ color: colors.primary }} /></div>}
+                    className="rounded-2xl p-3 text-center border-2 transition-all"
+                    style={{
+                      background: isSelected ? `${colors.primary}15` : theme.navBackground,
+                      borderColor: isSelected ? colors.primary : theme.line,
+                      boxShadow: isSelected ? `0 4px 16px ${colors.primary}30` : 'none',
+                    }}>
+                    <div className="text-lg mb-1">{opt.emoji}</div>
+                    <div className="h-3 w-full rounded-full mb-2" style={{ background: `linear-gradient(90deg, ${colors.primary}, ${colors.accent1})` }} />
+                    <span className="text-[11px] font-bold" style={{ color: isSelected ? colors.primary : theme.textMuted }}>{opt.name}</span>
                   </button>
                 );
               })}

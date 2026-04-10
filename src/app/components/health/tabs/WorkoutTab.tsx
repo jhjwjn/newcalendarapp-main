@@ -118,15 +118,16 @@ export function WorkoutTab({ theme, onNavigateToRecords }: WorkoutTabProps) {
     setEditingExercise(null);
   }, [selectedDay, selectedWeek, currentWeekPlan]);
 
-  // ——— 운동 타이머 ———
+  // ——— 운동 타이머 (완료 확인창 뜨면 정지) ———
   useEffect(() => {
-    if (session) {
+    if (session && !showFinishConfirm) {
       workoutTimerRef.current = setInterval(() => setElapsedSeconds(s => s + 1), 1000);
     } else {
-      setElapsedSeconds(0);
+      if (workoutTimerRef.current) clearInterval(workoutTimerRef.current);
+      if (!session) setElapsedSeconds(0);
     }
     return () => { if (workoutTimerRef.current) clearInterval(workoutTimerRef.current); };
-  }, [session]);
+  }, [session, showFinishConfirm]);
 
   // ——— 다음 세트로 이동 ———
   const advanceToNextSet = useCallback(() => {
@@ -357,21 +358,25 @@ export function WorkoutTab({ theme, onNavigateToRecords }: WorkoutTabProps) {
       createdAt: new Date().toISOString(),
     };
 
-    await addWorkoutRecord({
-      date: record.date,
-      weekNumber: record.weekNumber,
-      dayOfWeek: record.dayOfWeek,
-      exercises: record.exercises,
-      startTime: record.startTime,
-      endTime: record.endTime,
-      totalVolume: record.totalVolume,
-    });
+    try {
+      await addWorkoutRecord({
+        date: record.date,
+        weekNumber: record.weekNumber,
+        dayOfWeek: record.dayOfWeek,
+        exercises: record.exercises,
+        startTime: record.startTime,
+        endTime: record.endTime,
+        totalVolume: record.totalVolume,
+      });
 
-    const syncResult = syncWorkoutRecordToPlannedEvent(record);
-    if (syncResult.status === 'missing-schedule') {
-      toast.info('운동이 기록되었습니다. 캘린더앱에서 운동 일정을 등록하면 기록탭에서 캘린더에 연결할 수 있어요.');
-    } else {
-      toast.success(`운동 완료! 총 볼륨: ${totalVolume.toLocaleString()}kg`);
+      const syncResult = syncWorkoutRecordToPlannedEvent(record);
+      if (syncResult.status === 'missing-schedule') {
+        toast.info('운동이 기록되었습니다. 캘린더앱에서 운동 일정을 등록하면 기록탭에서 캘린더에 연결할 수 있어요.');
+      } else {
+        toast.success(`운동 완료! 총 볼륨: ${totalVolume.toLocaleString()}kg`);
+      }
+    } catch {
+      toast.error('기록 저장 중 오류가 발생했습니다. 다시 시도해주세요.');
     }
 
     setSession(null);
@@ -711,7 +716,7 @@ export function WorkoutTab({ theme, onNavigateToRecords }: WorkoutTabProps) {
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.9, opacity: 0 }}
                 className="w-full max-w-sm rounded-3xl border p-6 text-center"
-                style={{ background: theme.shellBackground, borderColor: theme.shellBorder, backdropFilter: 'blur(20px)' }}
+                style={{ background: theme.panelBackground, borderColor: theme.panelBorder, boxShadow: '0 24px 60px rgba(0,0,0,0.4)' }}
               >
                 <Trophy className="h-12 w-12 mx-auto mb-3" style={{ color: theme.primary }} />
                 <h3 className="text-xl font-black mb-2" style={{ color: theme.text }}>운동 종료</h3>

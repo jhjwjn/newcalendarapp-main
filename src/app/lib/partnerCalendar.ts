@@ -35,11 +35,15 @@ export async function getMyConnection(userId: string): Promise<PartnerConnection
 
 // 연결 코드 생성 (내가 먼저 시작)
 export async function createConnectionCode(userId: string): Promise<string | null> {
-  // Delete ALL existing connections for this user (both pending and active)
+  // Delete ALL existing connections for this user (as user_id or partner_id)
   await supabase
     .from('partner_connections')
     .delete()
     .eq('user_id', userId);
+  await supabase
+    .from('partner_connections')
+    .delete()
+    .eq('partner_id', userId);
 
   const code = generateCode();
   const { error } = await supabase

@@ -16,7 +16,7 @@ import {
 } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { AnimatePresence, motion } from 'motion/react';
-import { ChevronLeft, ChevronRight, Maximize2, Minimize2, Plus, GripVertical, GripHorizontal, Repeat, X, Trash2, Edit2, Dumbbell, Heart } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Maximize2, Minimize2, Plus, GripVertical, GripHorizontal, Repeat, X, Trash2, Edit2, Dumbbell, Heart, CalendarDays, Clock } from 'lucide-react';
 import { usePlanner } from '../../../context/PlannerContext';
 import { getPlannerTheme } from '../../../lib/plannerTheme';
 import { EventSheet } from '../EventSheet';
@@ -42,8 +42,10 @@ function getNextDateForDayOfWeek(dayOfWeek: number, fromDate: Date): Date {
   return date;
 }
 
+type RightPanelMode = 'default' | 'detail' | 'new-event' | 'edit-event' | 'workout';
+
 export function CalendarTab({ showRepeatModal = false, setShowRepeatModal }: CalendarTabProps = {}) {
-  const { events, categories, settings, updateEvent, addEvent, user } = usePlanner();
+  const { events, categories, settings, updateEvent, addEvent, deleteEvent, user } = usePlanner();
   const theme = getPlannerTheme(settings);
   const [viewMode, setViewMode] = useState<ViewMode>('month');
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -52,9 +54,20 @@ export function CalendarTab({ showRepeatModal = false, setShowRepeatModal }: Cal
   const [showEventSheet, setShowEventSheet] = useState(false);
   const [isMonthExpanded, setIsMonthExpanded] = useState(false);
 
+  // 우측 패널 (월간뷰 전용)
+  const [rightPanelMode, setRightPanelMode] = useState<RightPanelMode>('default');
+  const [rightPanelEventId, setRightPanelEventId] = useState<string | null>(null);
+  // 인라인 이벤트 폼 state
+  const [formTitle, setFormTitle] = useState('');
+  const [formDate, setFormDate] = useState('');
+  const [formStartTime, setFormStartTime] = useState('09:00');
+  const [formEndTime, setFormEndTime] = useState('10:00');
+  const [formCategoryId, setFormCategoryId] = useState('');
+  const [formMemo, setFormMemo] = useState('');
+
   // 파트너 일정
   const [partnerEvents, setPartnerEvents] = useState<CalendarEvent[]>([]);
-  const [showPartner, setShowPartner] = useState(true);
+  const [calendarFilter, setCalendarFilter] = useState<'both' | 'mine' | 'partner'>('both');
   useEffect(() => {
     if (!user) return;
     getMyConnection(user.id).then(async conn => {
@@ -66,6 +79,8 @@ export function CalendarTab({ showRepeatModal = false, setShowRepeatModal }: Cal
       setPartnerEvents(pEvents);
     });
   }, [user, currentDate]);
+
+  const hasPartner = partnerEvents.length > 0;
 
   // 운동일정 등록 모달
   const [showWorkoutModal, setShowWorkoutModal] = useState(false);
@@ -126,12 +141,60 @@ export function CalendarTab({ showRepeatModal = false, setShowRepeatModal }: Cal
   };
 
   const openNewEvent = (date?: Date) => {
+    const targetDate = date || selectedDate || currentDate;
     if (date) {
       setSelectedDate(date);
       setCurrentDate(date);
     }
-    setSelectedEvent(null);
-    setShowEventSheet(true);
+    if (viewMode === 'month') {
+      setFormTitle('');
+      setFormDate(format(targetDate, 'yyyy-MM-dd'));
+      setFormStartTime('09:00');
+      setFormEndTime('10:00');
+      setFormCategoryId(categories[0]?.id || '');
+      setFormMemo('');
+      setRightPanelEventId(null);
+      setRightPanelMode('new-event');
+    } else {
+      setSelectedEvent(null);
+      setShowEventSheet(true);
+    }
+  };
+
+  const openEditEvent = (eventId: string) => {
+    const ev = events.find(e => e.id === eventId);
+    if (!ev) return;
+    setFormTitle(ev.title);
+    setFormDate(ev.date);
+    setFormStartTime(ev.startTime);
+    setFormEndTime(ev.endTime);
+    setFormCategoryId(ev.categoryId);
+    setFormMemo(ev.memo || '');
+    setRightPanelEventId(eventId);
+    setRightPanelMode('edit-event');
+  };
+
+  const handleFormSave = async () => {
+    if (!formTitle.trim()) { toast.error('제목을 입력해주세요'); return; }
+    if (rightPanelMode === 'edit-event' && rightPanelEventId) {
+      await updateEvent(rightPanelEventId, { title: formTitle.trim(), date: formDate, startTime: formStartTime, endTime: formEndTime, categoryId: formCategoryId, memo: formMemo.trim() });
+      toast.success('일정이 수정되었습니다');
+    } else {
+      await addEvent({ title: formTitle.trim(), date: formDate, startTime: formStartTime, endTime: formEndTime, categoryId: formCategoryId, memo: formMemo.trim() });
+      toast.success('일정이 추가되었습니다');
+    }
+    setRightPanelMode('default');
+    setRightPanelEventId(null);
+  };
+
+  const handleFormDelete = async () => {
+    if (!rightPanelEventId) return;
+    if (confirm('정말 삭제하시겠습니까?')) {
+      await deleteEvent(rightPanelEventId);
+      toast.success('일정이 삭제되었습니다');
+      setRightPanelMode('default');
+      setRightPanelEventId(null);
+    }
   };
 
   const openWorkoutModal = () => {
@@ -156,7 +219,11 @@ export function CalendarTab({ showRepeatModal = false, setShowRepeatModal }: Cal
       setWorkoutModalDayTimes({});
     }
     setWorkoutModalWeek(1);
-    setShowWorkoutModal(true);
+    if (viewMode === 'month') {
+      setRightPanelMode('workout');
+    } else {
+      setShowWorkoutModal(true);
+    }
   };
 
   const handleWorkoutWeekChange = (weekNum: number) => {
@@ -193,6 +260,7 @@ export function CalendarTab({ showRepeatModal = false, setShowRepeatModal }: Cal
       });
     }
     setShowWorkoutModal(false);
+    setRightPanelMode('default');
     toast.success(`${workoutModalSelectedDays.size}개의 운동 일정이 등록되었습니다`);
   };
 
@@ -201,8 +269,13 @@ export function CalendarTab({ showRepeatModal = false, setShowRepeatModal }: Cal
       setSelectedDate(date);
       setCurrentDate(date);
     }
-    setSelectedEvent(eventId);
-    setShowEventSheet(true);
+    if (viewMode === 'month') {
+      setRightPanelEventId(eventId);
+      setRightPanelMode('detail');
+    } else {
+      setSelectedEvent(eventId);
+      setShowEventSheet(true);
+    }
   };
 
   // Drag handlers
@@ -351,7 +424,7 @@ export function CalendarTab({ showRepeatModal = false, setShowRepeatModal }: Cal
                   </div>
 
                   <div className={`${expanded ? 'mt-6 md:mt-9 flex flex-wrap gap-0.5' : 'mt-5 md:mt-6 flex flex-wrap gap-0.5'}`}>
-                    {dayEvents.slice(0, 10).map(event => (
+                    {calendarFilter !== 'partner' && dayEvents.slice(0, 10).map(event => (
                       <div
                         key={event.id}
                         draggable
@@ -368,14 +441,20 @@ export function CalendarTab({ showRepeatModal = false, setShowRepeatModal }: Cal
                         <div className="h-1.5 w-2 md:h-2 md:w-2.5 rounded-full shrink-0" style={{ backgroundColor: getCategoryColor(event.categoryId) }} />
                       </div>
                     ))}
-                    {/* 파트너 일정 (하트 점) */}
-                    {showPartner && partnerEvents
+                    {/* 파트너 일정 */}
+                    {calendarFilter !== 'mine' && partnerEvents
                       .filter(e => e.date === format(day, 'yyyy-MM-dd'))
-                      .slice(0, 3)
+                      .slice(0, calendarFilter === 'partner' ? 10 : 3)
                       .map(e => (
-                        <div key={`p-${e.id}`} title={`💑 ${e.title}`} className="h-1.5 w-1.5 md:h-2 md:w-2 rounded-full shrink-0" style={{ backgroundColor: '#f43f5e' }} />
+                        <div
+                          key={`p-${e.id}`}
+                          title={`💑 ${e.title}`}
+                          onClick={ev => { ev.stopPropagation(); }}
+                          className="h-1.5 w-2 md:h-2 md:w-2.5 rounded-full shrink-0 cursor-default"
+                          style={{ backgroundColor: '#f43f5e' }}
+                        />
                       ))}
-                    {dayEvents.length > 10 && (
+                    {calendarFilter !== 'partner' && dayEvents.length > 10 && (
                       <div className="text-[9px] md:text-[10px] font-medium" style={{ color: theme.textMuted }}>
                         +{dayEvents.length - 10}
                       </div>
@@ -389,62 +468,399 @@ export function CalendarTab({ showRepeatModal = false, setShowRepeatModal }: Cal
 
         {!expanded && (
           <div
-            className="rounded-xl md:rounded-[28px] border-0 md:border p-2 md:p-5"
+            className="rounded-xl md:rounded-[28px] border-0 md:border overflow-hidden"
             style={{
-              background: 'transparent',
+              background: theme.panelBackgroundStrong,
               borderColor: theme.panelBorder,
-              boxShadow: 'none',
+              boxShadow: theme.panelShadow,
+              minHeight: '400px',
             }}
           >
-            <div className="mb-2 md:mb-4">
-              <div className="text-[10px] md:text-xs font-semibold uppercase tracking-[0.24em]" style={{ color: theme.textMuted }}>
-                By Category
-              </div>
-              <h3 className="mt-1 text-base md:text-xl font-semibold" style={{ color: theme.text }}>
-                {format(currentDate, 'M월 일정')}
-              </h3>
-            </div>
-
-            <div className="space-y-4">
-              {monthlyEventsByCategory.length === 0 ? (
-                <div className="rounded-2xl border px-4 py-10 text-center text-sm" style={{ borderColor: theme.line, color: theme.textMuted }}>
-                  이번 달 일정이 없습니다
-                </div>
-              ) : (
-                monthlyEventsByCategory.map(category => (
-                  <div key={category.id}>
-                    <div className="mb-2 flex items-center gap-2">
-                      <div className="h-3 w-3 rounded-full" style={{ backgroundColor: category.color }} />
-                      <div className="text-sm font-semibold" style={{ color: theme.text }}>
-                        {category.emoji} {category.name}
-                      </div>
-                      <div className="text-xs" style={{ color: theme.textMuted }}>
-                        {category.items.length}
-                      </div>
+            <AnimatePresence mode="wait">
+              {/* ── 기본 카테고리 뷰 ── */}
+              {rightPanelMode === 'default' && (
+                <motion.div
+                  key="default"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                  className="p-4 md:p-5 h-full overflow-y-auto"
+                >
+                  <div className="mb-3">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.22em]" style={{ color: theme.textMuted }}>
+                      {calendarFilter === 'partner' ? 'Partner Calendar' : 'By Category'}
                     </div>
-                    <div className="space-y-2">
-                      {category.items.slice(0, 6).map(event => (
-                        <button
-                          key={event.id}
-                          onClick={() => openExistingEvent(event.id, new Date(event.date))}
-                          className="flex w-full items-center justify-between rounded-2xl border px-3 py-2 text-left"
-                          style={{ background: theme.navBackground, borderColor: theme.line }}
-                        >
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-semibold" style={{ color: theme.text }}>
-                              {event.title}
+                    <h3 className="mt-1 text-base font-semibold" style={{ color: theme.text }}>
+                      {format(currentDate, 'M월 일정')}
+                    </h3>
+                  </div>
+                  <div className="space-y-3">
+                    {calendarFilter === 'partner' ? (
+                      // 파트너 일정 표시
+                      partnerEvents.length === 0 ? (
+                        <div className="rounded-2xl border px-4 py-10 text-center text-sm" style={{ borderColor: theme.line, color: theme.textMuted }}>
+                          파트너 일정이 없습니다
+                        </div>
+                      ) : (
+                        partnerEvents
+                          .filter(e => e.date.startsWith(format(currentDate, 'yyyy-MM')))
+                          .sort((a, b) => `${a.date} ${a.startTime}`.localeCompare(`${b.date} ${b.startTime}`))
+                          .slice(0, 10)
+                          .map(event => (
+                            <div
+                              key={event.id}
+                              className="flex w-full items-center justify-between rounded-2xl border px-3 py-2"
+                              style={{ background: 'rgba(244,63,94,0.08)', borderColor: 'rgba(244,63,94,0.2)' }}
+                            >
+                              <div className="min-w-0">
+                                <div className="truncate text-sm font-semibold" style={{ color: theme.text }}>
+                                  💑 {event.title}
+                                </div>
+                                <div className="text-xs" style={{ color: theme.textMuted }}>
+                                  {format(new Date(event.date), 'M/d (E)', { locale: ko })} · {event.startTime}
+                                </div>
+                              </div>
                             </div>
-                            <div className="text-xs" style={{ color: theme.textMuted }}>
-                              {format(new Date(event.date), 'M/d', { locale: ko })} · {event.startTime}
+                          ))
+                      )
+                    ) : (
+                      // 내 일정 카테고리별 표시
+                      monthlyEventsByCategory.length === 0 ? (
+                        <div className="rounded-2xl border px-4 py-10 text-center text-sm" style={{ borderColor: theme.line, color: theme.textMuted }}>
+                          이번 달 일정이 없습니다
+                        </div>
+                      ) : (
+                        monthlyEventsByCategory.map(category => (
+                          <div key={category.id}>
+                            <div className="mb-1.5 flex items-center gap-2">
+                              <div className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: category.color }} />
+                              <div className="text-xs font-semibold" style={{ color: theme.text }}>
+                                {category.emoji} {category.name}
+                              </div>
+                              <div className="text-xs" style={{ color: theme.textMuted }}>
+                                {category.items.length}
+                              </div>
+                            </div>
+                            <div className="space-y-1.5">
+                              {category.items.slice(0, 5).map(event => (
+                                <button
+                                  key={event.id}
+                                  onClick={() => openExistingEvent(event.id, new Date(event.date))}
+                                  className="flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left transition-all hover:scale-[1.01]"
+                                  style={{ background: theme.navBackground, borderColor: theme.line }}
+                                >
+                                  <div className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: category.color }} />
+                                  <div className="min-w-0 flex-1">
+                                    <div className="truncate text-xs font-semibold" style={{ color: theme.text }}>
+                                      {event.title}
+                                    </div>
+                                    <div className="text-[10px]" style={{ color: theme.textMuted }}>
+                                      {format(new Date(event.date), 'M/d', { locale: ko })} · {event.startTime}
+                                    </div>
+                                  </div>
+                                </button>
+                              ))}
                             </div>
                           </div>
-                        </button>
-                      ))}
-                    </div>
+                        ))
+                      )
+                    )}
                   </div>
-                ))
+                </motion.div>
               )}
-            </div>
+
+              {/* ── 이벤트 세부정보 ── */}
+              {rightPanelMode === 'detail' && rightPanelEventId && (() => {
+                const ev = events.find(e => e.id === rightPanelEventId);
+                const cat = ev ? categories.find(c => c.id === ev.categoryId) : null;
+                if (!ev) return null;
+                return (
+                  <motion.div
+                    key="detail"
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                    className="flex flex-col h-full"
+                  >
+                    {/* 헤더 */}
+                    <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: theme.panelBorder }}>
+                      <button
+                        onClick={() => setRightPanelMode('default')}
+                        className="flex items-center gap-1 text-xs font-semibold"
+                        style={{ color: theme.textMuted }}
+                      >
+                        <ChevronLeft className="h-4 w-4" /> 목록
+                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => openEditEvent(rightPanelEventId)}
+                          className="rounded-xl px-3 py-1.5 text-xs font-semibold"
+                          style={{ background: `${theme.primary}18`, color: theme.primary }}
+                        >
+                          <Edit2 className="h-3.5 w-3.5 inline mr-1" />편집
+                        </button>
+                        <button
+                          onClick={handleFormDelete}
+                          className="rounded-xl px-3 py-1.5 text-xs font-semibold"
+                          style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 inline mr-1" />삭제
+                        </button>
+                      </div>
+                    </div>
+                    {/* 내용 */}
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                      {/* 카테고리 배지 */}
+                      {cat && (
+                        <div className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold" style={{ background: `${cat.color}20`, color: cat.color }}>
+                          <div className="h-2 w-2 rounded-full" style={{ backgroundColor: cat.color }} />
+                          {cat.emoji} {cat.name}
+                        </div>
+                      )}
+                      {/* 제목 */}
+                      <h2 className="text-xl font-black leading-tight" style={{ color: theme.text }}>{ev.title}</h2>
+                      {/* 날짜/시간 */}
+                      <div className="rounded-2xl p-3 space-y-2" style={{ background: theme.navBackground }}>
+                        <div className="flex items-center gap-2 text-sm" style={{ color: theme.textSecondary }}>
+                          <CalendarDays className="h-4 w-4 shrink-0" style={{ color: theme.primary }} />
+                          {format(new Date(ev.date), 'yyyy년 M월 d일 (E)', { locale: ko })}
+                        </div>
+                        <div className="flex items-center gap-2 text-sm" style={{ color: theme.textSecondary }}>
+                          <Clock className="h-4 w-4 shrink-0" style={{ color: theme.primary }} />
+                          {ev.startTime} – {ev.endTime}
+                        </div>
+                      </div>
+                      {/* 메모 */}
+                      {ev.memo && (
+                        <div className="rounded-2xl p-3" style={{ background: theme.navBackground }}>
+                          <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: theme.textMuted }}>메모</p>
+                          <p className="text-sm whitespace-pre-wrap leading-relaxed" style={{ color: theme.textSecondary }}>{ev.memo}</p>
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                );
+              })()}
+
+              {/* ── 이벤트 추가/편집 폼 ── */}
+              {(rightPanelMode === 'new-event' || rightPanelMode === 'edit-event') && (
+                <motion.div
+                  key="form"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                  className="flex flex-col h-full"
+                >
+                  {/* 헤더 */}
+                  <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: theme.panelBorder }}>
+                    <button
+                      onClick={() => setRightPanelMode('default')}
+                      className="flex items-center gap-1 text-xs font-semibold"
+                      style={{ color: theme.textMuted }}
+                    >
+                      <ChevronLeft className="h-4 w-4" /> 취소
+                    </button>
+                    <span className="text-sm font-bold" style={{ color: theme.text }}>
+                      {rightPanelMode === 'edit-event' ? '일정 편집' : '일정 추가'}
+                    </span>
+                    <button
+                      onClick={handleFormSave}
+                      className="rounded-xl px-3 py-1.5 text-xs font-bold text-white"
+                      style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.accent1 || theme.primary})` }}
+                    >
+                      저장
+                    </button>
+                  </div>
+                  {/* 폼 */}
+                  <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                    {/* 제목 */}
+                    <input
+                      type="text"
+                      value={formTitle}
+                      onChange={e => setFormTitle(e.target.value)}
+                      placeholder="일정 제목"
+                      className="w-full rounded-2xl border px-4 py-3 text-sm font-semibold outline-none"
+                      style={{ background: theme.navBackground, borderColor: theme.line, color: theme.text }}
+                      autoFocus
+                    />
+                    {/* 날짜 */}
+                    <div className="rounded-2xl border overflow-hidden" style={{ background: theme.navBackground, borderColor: theme.line }}>
+                      <div className="px-3 py-2 flex items-center gap-2">
+                        <CalendarDays className="h-4 w-4" style={{ color: theme.primary }} />
+                        <span className="text-xs font-semibold" style={{ color: theme.textMuted }}>날짜</span>
+                      </div>
+                      <input
+                        type="date"
+                        value={formDate}
+                        onChange={e => setFormDate(e.target.value)}
+                        className="w-full px-3 pb-3 text-sm outline-none"
+                        style={{ background: 'transparent', color: theme.text }}
+                      />
+                    </div>
+                    {/* 시간 */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-2xl border px-3 py-2" style={{ background: theme.navBackground, borderColor: theme.line }}>
+                        <p className="text-[10px] font-semibold mb-1" style={{ color: theme.textMuted }}>시작</p>
+                        <input type="time" value={formStartTime} onChange={e => setFormStartTime(e.target.value)} className="w-full text-sm outline-none" style={{ background: 'transparent', color: theme.text }} />
+                      </div>
+                      <div className="rounded-2xl border px-3 py-2" style={{ background: theme.navBackground, borderColor: theme.line }}>
+                        <p className="text-[10px] font-semibold mb-1" style={{ color: theme.textMuted }}>종료</p>
+                        <input type="time" value={formEndTime} onChange={e => setFormEndTime(e.target.value)} className="w-full text-sm outline-none" style={{ background: 'transparent', color: theme.text }} />
+                      </div>
+                    </div>
+                    {/* 카테고리 */}
+                    <div className="rounded-2xl border p-3" style={{ background: theme.navBackground, borderColor: theme.line }}>
+                      <p className="text-[10px] font-semibold mb-2" style={{ color: theme.textMuted }}>카테고리</p>
+                      <div className="flex flex-wrap gap-2">
+                        {categories.map(cat => (
+                          <button
+                            key={cat.id}
+                            onClick={() => setFormCategoryId(cat.id)}
+                            className="flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-semibold border-2 transition-all"
+                            style={{
+                              background: formCategoryId === cat.id ? `${cat.color}20` : 'transparent',
+                              borderColor: formCategoryId === cat.id ? cat.color : theme.line,
+                              color: formCategoryId === cat.id ? cat.color : theme.textMuted,
+                            }}
+                          >
+                            <div className="h-2 w-2 rounded-full" style={{ backgroundColor: cat.color }} />
+                            {cat.emoji} {cat.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {/* 메모 */}
+                    <textarea
+                      value={formMemo}
+                      onChange={e => setFormMemo(e.target.value)}
+                      placeholder="메모 (선택)"
+                      rows={3}
+                      className="w-full rounded-2xl border px-3 py-2.5 text-sm outline-none resize-none"
+                      style={{ background: theme.navBackground, borderColor: theme.line, color: theme.text }}
+                    />
+                    {/* 편집 시 삭제 버튼 */}
+                    {rightPanelMode === 'edit-event' && (
+                      <button
+                        onClick={handleFormDelete}
+                        className="w-full rounded-2xl py-2.5 text-sm font-semibold"
+                        style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}
+                      >
+                        <Trash2 className="h-4 w-4 inline mr-2" />일정 삭제
+                      </button>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+
+              {/* ── 운동일정 등록 ── */}
+              {rightPanelMode === 'workout' && (
+                <motion.div
+                  key="workout"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                  className="flex flex-col h-full"
+                >
+                  {/* 헤더 */}
+                  <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: theme.panelBorder }}>
+                    <button
+                      onClick={() => setRightPanelMode('default')}
+                      className="flex items-center gap-1 text-xs font-semibold"
+                      style={{ color: theme.textMuted }}
+                    >
+                      <ChevronLeft className="h-4 w-4" /> 취소
+                    </button>
+                    <div className="flex items-center gap-2">
+                      <Dumbbell className="h-4 w-4" style={{ color: theme.primary }} />
+                      <span className="text-sm font-bold" style={{ color: theme.text }}>운동일정 등록</span>
+                    </div>
+                    <div className="w-12" />
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                    {/* 주차 선택 */}
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: theme.textMuted }}>주차 선택</label>
+                      <div className="flex gap-2">
+                        {[1, 2, 3, 4].map(w => (
+                          <button
+                            key={w}
+                            onClick={() => handleWorkoutWeekChange(w)}
+                            className="flex-1 rounded-2xl py-2 text-sm font-semibold"
+                            style={{
+                              background: workoutModalWeek === w ? theme.navActiveBackground : theme.navBackground,
+                              color: workoutModalWeek === w ? theme.navActiveText : theme.textMuted,
+                            }}
+                          >
+                            {w}주차
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {/* 요일별 시간 설정 */}
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: theme.textMuted }}>요일별 시간 설정</label>
+                      <div className="space-y-2">
+                        {DAY_LABELS.map((label, idx) => {
+                          const selected = workoutModalSelectedDays.has(idx);
+                          const times = workoutModalDayTimes[idx] || { startTime: '07:00', endTime: '08:00' };
+                          return (
+                            <div key={idx} className="flex items-center gap-2">
+                              <button
+                                onClick={() => {
+                                  const next = new Set(workoutModalSelectedDays);
+                                  if (next.has(idx)) {
+                                    next.delete(idx);
+                                  } else {
+                                    next.add(idx);
+                                    if (!workoutModalDayTimes[idx]) {
+                                      setWorkoutModalDayTimes(prev => ({ ...prev, [idx]: { startTime: '07:00', endTime: '08:00' } }));
+                                    }
+                                  }
+                                  setWorkoutModalSelectedDays(next);
+                                }}
+                                className="flex items-center gap-2 shrink-0"
+                              >
+                                <div
+                                  className="h-5 w-5 rounded-md flex items-center justify-center border-2 transition-all"
+                                  style={{ background: selected ? theme.primary : 'transparent', borderColor: selected ? theme.primary : theme.line }}
+                                >
+                                  {selected && <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                                </div>
+                                <span className="text-sm font-bold w-4" style={{ color: selected ? theme.text : theme.textMuted }}>{label}</span>
+                              </button>
+                              <input type="time" value={times.startTime} onChange={e => setWorkoutModalDayTimes(prev => ({ ...prev, [idx]: { ...times, startTime: e.target.value } }))} disabled={!selected}
+                                className="flex-1 rounded-xl border px-2 py-1.5 text-xs"
+                                style={{ background: selected ? theme.navBackground : theme.line, color: selected ? theme.text : theme.textMuted, borderColor: theme.line, opacity: selected ? 1 : 0.5 }}
+                              />
+                              <span className="text-xs shrink-0" style={{ color: theme.textMuted }}>~</span>
+                              <input type="time" value={times.endTime} onChange={e => setWorkoutModalDayTimes(prev => ({ ...prev, [idx]: { ...times, endTime: e.target.value } }))} disabled={!selected}
+                                className="flex-1 rounded-xl border px-2 py-1.5 text-xs"
+                                style={{ background: selected ? theme.navBackground : theme.line, color: selected ? theme.text : theme.textMuted, borderColor: theme.line, opacity: selected ? 1 : 0.5 }}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <p className="text-xs" style={{ color: theme.textMuted }}>
+                      선택한 요일의 다음 날짜부터 캘린더에 운동 일정이 등록됩니다.
+                    </p>
+                    <button
+                      onClick={handleRegisterWorkoutSchedule}
+                      disabled={workoutModalSelectedDays.size === 0}
+                      className="w-full rounded-2xl py-3 font-semibold disabled:opacity-40"
+                      style={{ background: theme.navActiveBackground, color: theme.navActiveText }}
+                    >
+                      {workoutModalSelectedDays.size}개 운동 일정 등록
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         )}
       </div>
@@ -768,35 +1184,53 @@ export function CalendarTab({ showRepeatModal = false, setShowRepeatModal }: Cal
             )}
           </button>
 
-          {partnerEvents.length > 0 && (
-            <button
-              onClick={() => setShowPartner(v => !v)}
-              className="flex items-center gap-2 rounded-2xl px-3 py-2 font-semibold transition-transform duration-200 hover:translate-y-[-1px]"
-              style={{
-                background: showPartner ? '#f43f5e20' : theme.navBackground,
-                color: showPartner ? '#f43f5e' : theme.textSecondary,
-              }}
-              title="파트너 일정 표시/숨기기"
-            >
-              <Heart className="w-4 h-4" />
-              <span className="hidden sm:inline text-sm">파트너</span>
-            </button>
+          {/* 파트너 캘린더 필터 (파트너 연결된 경우) */}
+          {hasPartner && (
+            <div className="flex rounded-2xl p-1 gap-0.5" style={{ background: theme.navBackground }}>
+              {([
+                { id: 'both', label: '전체', icon: null },
+                { id: 'mine', label: '내 일정', icon: null },
+                { id: 'partner', label: <><Heart className="w-3 h-3 inline" /> 파트너</>, icon: null },
+              ] as const).map(opt => (
+                <button
+                  key={opt.id}
+                  onClick={() => {
+                    setCalendarFilter(opt.id);
+                    if (opt.id !== 'partner') setRightPanelMode('default');
+                    else setRightPanelMode('default');
+                  }}
+                  className="rounded-xl px-2.5 py-1 text-xs font-semibold transition-all"
+                  style={{
+                    background: calendarFilter === opt.id ? (opt.id === 'partner' ? '#f43f5e20' : theme.panelBackgroundStrong) : 'transparent',
+                    color: calendarFilter === opt.id ? (opt.id === 'partner' ? '#f43f5e' : theme.text) : theme.textMuted,
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
           )}
 
           <button
             onClick={openWorkoutModal}
             className="flex items-center gap-2 rounded-2xl px-3 py-2 font-semibold transition-transform duration-200 hover:translate-y-[-1px]"
-            style={{ background: theme.navBackground, color: theme.textSecondary }}
+            style={{
+              background: rightPanelMode === 'workout' ? `${theme.primary}18` : theme.navBackground,
+              color: rightPanelMode === 'workout' ? theme.primary : theme.textSecondary,
+            }}
             title="헬스앱 운동계획으로 일정 등록"
           >
             <Dumbbell className="w-4 h-4" />
-            <span className="hidden sm:inline text-sm">운동일정 등록</span>
+            <span className="hidden sm:inline text-sm">운동일정</span>
           </button>
 
           <button
             onClick={() => openNewEvent(selectedDate || currentDate)}
             className="flex items-center gap-2 rounded-2xl px-4 py-2 font-semibold transition-transform duration-200 hover:translate-y-[-1px]"
-            style={{ background: theme.navActiveBackground, color: theme.navActiveText }}
+            style={{
+              background: (rightPanelMode === 'new-event' || rightPanelMode === 'edit-event') ? `${theme.primary}18` : theme.navActiveBackground,
+              color: (rightPanelMode === 'new-event' || rightPanelMode === 'edit-event') ? theme.primary : theme.navActiveText,
+            }}
           >
             <Plus className="w-4 h-4" />
             <span className="hidden sm:inline">일정 추가</span>

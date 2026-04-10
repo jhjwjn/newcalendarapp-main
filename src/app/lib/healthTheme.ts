@@ -38,7 +38,9 @@ export interface HealthTheme {
 
 export function getHealthTheme(settings: HealthSettings): HealthTheme {
   const isDark = settings.isDarkMode ?? false;
-  const accent = (isDark ? settings.dynamicAccentDark : settings.dynamicAccent) ?? 'orange';
+  const rawAccent = (isDark ? settings.dynamicAccentDark : settings.dynamicAccent) ?? 'orange';
+  // migrate 'black' → 'teal'
+  const accent = (rawAccent === 'black' ? 'teal' : rawAccent) as HealthAccent;
   const colors = isDark ? HEALTH_DYNAMIC_THEMES_DARK[accent] : HEALTH_DYNAMIC_THEMES[accent];
 
   if (isDark) {

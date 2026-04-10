@@ -75,8 +75,8 @@ export interface BodyRecord {
 export interface HealthSettings {
   name: string;
   theme: 'slate' | 'forest' | 'amber' | 'rose' | 'mono' | 'white';
-  dynamicAccent?: 'orange' | 'red' | 'blue' | 'black'; // Dynamic 테마 악센트 색상 (라이트모드)
-  dynamicAccentDark?: 'orange' | 'red' | 'blue' | 'black'; // Dynamic 테마 악센트 색상 (다크모드)
+  dynamicAccent?: 'orange' | 'red' | 'blue' | 'teal' | 'black'; // Dynamic 테마 악센트 색상 (라이트모드)
+  dynamicAccentDark?: 'orange' | 'red' | 'blue' | 'teal' | 'black'; // Dynamic 테마 악센트 색상 (다크모드)
   isDarkMode?: boolean; // 다크모드 설정
   defaultRestTime: number; // 초 단위
   height: number; // cm (BMI 계산용)
