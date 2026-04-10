@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useHealth } from '../../../context/HealthContext';
 import { format } from 'date-fns';
@@ -20,8 +20,7 @@ import {
   BedDouble,
   ClipboardList,
   SkipForward,
-  Circle,
-  ArrowRight,
+  GripVertical,
 } from 'lucide-react';
 import { WorkoutExercise, WorkoutSet } from '../../../types/health';
 import { toast } from '../../../lib/toast';
@@ -29,6 +28,7 @@ import { syncWorkoutRecordToPlannedEvent } from '../../../lib/plannerWorkoutSync
 
 interface WorkoutTabProps {
   theme: any;
+  onNavigateToRecords?: () => void;
 }
 
 interface ActiveSession {
@@ -45,7 +45,7 @@ interface ActiveSession {
 const DAY_LABELS = ['일', '월', '화', '수', '목', '금', '토'];
 const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0]; // 월~일 표시 순서
 
-export function WorkoutTab({ theme }: WorkoutTabProps) {
+export function WorkoutTab({ theme, onNavigateToRecords }: WorkoutTabProps) {
   const {
     weekPlans,
     currentWeek,
@@ -64,22 +64,25 @@ export function WorkoutTab({ theme }: WorkoutTabProps) {
   const [isResting, setIsResting] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [showFinishConfirm, setShowFinishConfirm] = useState(false);
+  const [confirmedElapsedSeconds, setConfirmedElapsedSeconds] = useState(0);
 
-  // ——— Plan Editor State ———
-  const [isEditMode, setIsEditMode] = useState(false);
-  const [editWeek, setEditWeek] = useState(1);
-  const [editDayOfWeek, setEditDayOfWeek] = useState<number | null>(null);
-  const [editingExercise, setEditingExercise] = useState<WorkoutExercise | null>(null);
-  const [editingExerciseIdx, setEditingExerciseIdx] = useState<number | null>(null);
-  const [showAddExercise, setShowAddExercise] = useState(false);
-  const [newExerciseName, setNewExerciseName] = useState('');
-
-  // ——— Plan View State (새로운) ———
+  // ——— Plan View State ———
+  const [selectedWeek, setSelectedWeek] = useState(currentWeek);
   const [selectedDay, setSelectedDay] = useState<number>(new Date().getDay());
   const [planExercises, setPlanExercises] = useState<WorkoutExercise[]>([]);
   const [checkedExercises, setCheckedExercises] = useState<Set<string>>(new Set());
   const [checkedSets, setCheckedSets] = useState<Set<string>>(new Set()); // "exId-setIdx"
-  const [expandedPlanExercises, setExpandedPlanExercises] = useState<Set<number>>(new Set([0]));
+  const [expandedPlanExercises, setExpandedPlanExercises] = useState<Set<number>>(new Set());
+
+  // ——— Inline Edit State (per exercise, replaces isEditMode) ———
+  const [editingExerciseId, setEditingExerciseId] = useState<string | null>(null);
+  const [editingExercise, setEditingExercise] = useState<WorkoutExercise | null>(null);
+  const [showAddExercise, setShowAddExercise] = useState(false);
+  const [newExerciseName, setNewExerciseName] = useState('');
+
+  // ——— Drag-to-reorder sets state ———
+  const [dragFromSetIdx, setDragFromSetIdx] = useState<number | null>(null);
+  const [dragOverSetIdx, setDragOverSetIdx] = useState<number | null>(null);
 
   const restTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const workoutTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -88,9 +91,10 @@ export function WorkoutTab({ theme }: WorkoutTabProps) {
   const todayStr = format(today, 'yyyy-MM-dd');
   const todayDayOfWeek = today.getDay();
   const alreadyWorkoutedToday = workoutRecords.some(r => r.date === todayStr);
-  const currentWeekPlan = weekPlans.find(p => p.weekNumber === currentWeek);
 
-  // ——— selectedDay 변경 시 planExercises 동기화 ———
+  const currentWeekPlan = weekPlans.find(p => p.weekNumber === selectedWeek);
+
+  // ——— selectedDay/selectedWeek 변경 시 planExercises 동기화 ———
   useEffect(() => {
     const day = currentWeekPlan?.days.find(d => d.dayOfWeek === selectedDay);
     if (day && !day.isRestDay && day.exercises.length > 0) {
@@ -109,8 +113,10 @@ export function WorkoutTab({ theme }: WorkoutTabProps) {
       setCheckedExercises(new Set());
       setCheckedSets(new Set());
     }
-    setExpandedPlanExercises(new Set([0]));
-  }, [selectedDay, currentWeekPlan]);
+    setExpandedPlanExercises(new Set());
+    setEditingExerciseId(null);
+    setEditingExercise(null);
+  }, [selectedDay, selectedWeek, currentWeekPlan]);
 
   // ——— 운동 타이머 ———
   useEffect(() => {
@@ -122,7 +128,7 @@ export function WorkoutTab({ theme }: WorkoutTabProps) {
     return () => { if (workoutTimerRef.current) clearInterval(workoutTimerRef.current); };
   }, [session]);
 
-  // ——— 다음 세트로 이동 (안정적인 함수형 업데이트) ———
+  // ——— 다음 세트로 이동 ———
   const advanceToNextSet = useCallback(() => {
     setSession(s => {
       if (!s || s.mode !== 'tracking') return s;
@@ -175,19 +181,21 @@ export function WorkoutTab({ theme }: WorkoutTabProps) {
       const isAbsolutelyLast = isLastSetInEx && isLastEx;
 
       if (isAbsolutelyLast) {
-        setTimeout(() => setShowFinishConfirm(true), 400);
+        setTimeout(() => {
+          setConfirmedElapsedSeconds(elapsedSeconds);
+          setShowFinishConfirm(true);
+        }, 400);
       } else if (currentSet && !currentSet.isWarmup) {
         setTimeout(() => {
           setRestTimer(settings.defaultRestTime || 90);
           setIsResting(true);
         }, 0);
       } else {
-        // 워밍업은 바로 다음 세트로
         setTimeout(() => advanceToNextSet(), 300);
       }
       return { ...s, completedSets: newCompleted };
     });
-  }, [settings.defaultRestTime, advanceToNextSet]);
+  }, [settings.defaultRestTime, advanceToNextSet, elapsedSeconds]);
 
   const skipRest = useCallback(() => {
     if (restTimerRef.current) clearInterval(restTimerRef.current);
@@ -289,7 +297,7 @@ export function WorkoutTab({ theme }: WorkoutTabProps) {
       return;
     }
     setSession({
-      weekNumber: currentWeek,
+      weekNumber: selectedWeek,
       dayOfWeek: selectedDay,
       exercises,
       startTime: new Date().toISOString(),
@@ -313,7 +321,7 @@ export function WorkoutTab({ theme }: WorkoutTabProps) {
       exercises.flatMap((_, eIdx) => exercises[eIdx].sets.map((_, sIdx) => `${eIdx}-${sIdx}`))
     );
     setSession({
-      weekNumber: currentWeek,
+      weekNumber: selectedWeek,
       dayOfWeek: selectedDay,
       exercises,
       startTime: new Date().toISOString(),
@@ -370,54 +378,40 @@ export function WorkoutTab({ theme }: WorkoutTabProps) {
     setIsResting(false);
     setRestTimer(0);
     setShowFinishConfirm(false);
+    onNavigateToRecords?.();
   };
 
   const completedSetsCount = session?.completedSets.size || 0;
   const totalSetsCount = session?.exercises.reduce((sum, ex) => sum + ex.sets.filter(s => !s.isWarmup).length, 0) || 0;
 
-  // ——— Plan Editor Helpers ———
-  const editWeekPlan = weekPlans.find(p => p.weekNumber === editWeek);
-  const editDay = editWeekPlan?.days.find(d => d.dayOfWeek === editDayOfWeek);
-
-  const handleToggleRestDay = async (dow: number) => {
-    const day = editWeekPlan?.days.find(d => d.dayOfWeek === dow);
-    if (!day) return;
-    await updateDayRoutine(editWeek, dow, { isRestDay: !day.isRestDay });
-  };
-
-  const handleUpdateRoutineName = async (name: string) => {
-    if (editDayOfWeek === null) return;
-    await updateDayRoutine(editWeek, editDayOfWeek, { routineName: name });
-  };
-
-  const handleAddExercise = async () => {
-    if (!newExerciseName.trim() || editDayOfWeek === null) return;
-    await addExerciseToDayRoutine(editWeek, editDayOfWeek, {
-      name: newExerciseName.trim(),
-      sets: [
-        { id: crypto.randomUUID(), weight: 0, reps: 10, isWarmup: false, completed: false },
-        { id: crypto.randomUUID(), weight: 0, reps: 10, isWarmup: false, completed: false },
-        { id: crypto.randomUUID(), weight: 0, reps: 10, isWarmup: false, completed: false },
-      ],
-    });
-    setNewExerciseName('');
-    setShowAddExercise(false);
-    toast.success('운동 추가됨');
-  };
-
-  const handleRemoveExercise = async (exerciseId: string) => {
-    if (editDayOfWeek === null) return;
-    await removeExerciseFromDayRoutine(editWeek, editDayOfWeek, exerciseId);
-    if (editingExercise?.id === exerciseId) setEditingExercise(null);
-    toast.success('운동 삭제됨');
+  // ——— Inline Edit Helpers ———
+  const openExerciseEdit = (exercise: WorkoutExercise) => {
+    if (editingExerciseId === exercise.id) {
+      setEditingExerciseId(null);
+      setEditingExercise(null);
+    } else {
+      setEditingExerciseId(exercise.id);
+      setEditingExercise({ ...exercise, sets: exercise.sets.map(s => ({ ...s })) });
+    }
   };
 
   const handleSaveExercise = async () => {
-    if (!editingExercise || editDayOfWeek === null) return;
-    await updateExerciseInDayRoutine(editWeek, editDayOfWeek, editingExercise);
+    if (!editingExercise) return;
+    const day = currentWeekPlan?.days.find(d => d.dayOfWeek === selectedDay);
+    if (!day) return;
+    await updateExerciseInDayRoutine(selectedWeek, selectedDay, editingExercise);
+    setEditingExerciseId(null);
     setEditingExercise(null);
-    setEditingExerciseIdx(null);
     toast.success('저장됨');
+  };
+
+  const handleRemoveExercise = async (exerciseId: string) => {
+    await removeExerciseFromDayRoutine(selectedWeek, selectedDay, exerciseId);
+    if (editingExercise?.id === exerciseId) {
+      setEditingExerciseId(null);
+      setEditingExercise(null);
+    }
+    toast.success('운동 삭제됨');
   };
 
   const updateEditSet = (setIdx: number, field: 'weight' | 'reps', delta: number) => {
@@ -443,215 +437,51 @@ export function WorkoutTab({ theme }: WorkoutTabProps) {
     setEditingExercise({ ...editingExercise, sets: editingExercise.sets.filter((_, i) => i !== setIdx) });
   };
 
-  // ════════════════════════════════════════════════════════════
-  // ——— 루틴 편집 화면 ———
-  // ════════════════════════════════════════════════════════════
-  if (isEditMode) {
-    return (
-      <div className="mx-auto max-w-[1360px] p-3 md:p-5 space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: theme.textMuted }}>Plan Editor</p>
-            <h1 className="text-2xl font-black" style={{ color: theme.text }}>루틴 편집</h1>
-          </div>
-          <button
-            onClick={() => { setIsEditMode(false); setEditDayOfWeek(null); setEditingExercise(null); }}
-            className="rounded-2xl px-4 py-2 text-sm font-bold border"
-            style={{ borderColor: theme.line, color: theme.textSecondary }}
-          >
-            완료
-          </button>
-        </div>
+  const handleToggleRestDay = async () => {
+    const day = currentWeekPlan?.days.find(d => d.dayOfWeek === selectedDay);
+    if (!day) return;
+    await updateDayRoutine(selectedWeek, selectedDay, { isRestDay: !day.isRestDay });
+  };
 
-        {/* 주차 선택 */}
-        <div className="flex gap-2">
-          {[1, 2, 3, 4].map(w => (
-            <button
-              key={w}
-              onClick={() => { setEditWeek(w); setEditDayOfWeek(null); setEditingExercise(null); }}
-              className="flex-1 rounded-2xl py-2.5 text-sm font-bold border transition-all"
-              style={{
-                background: editWeek === w ? theme.primary : theme.panelBackground,
-                borderColor: editWeek === w ? theme.primary : theme.line,
-                color: editWeek === w ? '#fff' : theme.textSecondary,
-              }}
-            >
-              {w}주차
-            </button>
-          ))}
-        </div>
+  const handleAddExercise = async () => {
+    if (!newExerciseName.trim()) return;
+    await addExerciseToDayRoutine(selectedWeek, selectedDay, {
+      name: newExerciseName.trim(),
+      sets: [
+        { id: crypto.randomUUID(), weight: 0, reps: 10, isWarmup: false, completed: false },
+        { id: crypto.randomUUID(), weight: 0, reps: 10, isWarmup: false, completed: false },
+        { id: crypto.randomUUID(), weight: 0, reps: 10, isWarmup: false, completed: false },
+      ],
+    });
+    setNewExerciseName('');
+    setShowAddExercise(false);
+    toast.success('운동 추가됨');
+  };
 
-        {/* 요일 선택 */}
-        <div className="grid grid-cols-7 gap-1.5">
-          {DAY_LABELS.map((label, dow) => {
-            const day = editWeekPlan?.days.find(d => d.dayOfWeek === dow);
-            const isRest = day?.isRestDay ?? false;
-            const exCount = day?.exercises.length ?? 0;
-            const isSelected = editDayOfWeek === dow;
-            return (
-              <button
-                key={dow}
-                onClick={() => { setEditDayOfWeek(isSelected ? null : dow); setEditingExercise(null); setShowAddExercise(false); }}
-                className="rounded-2xl p-2.5 text-center border transition-all"
-                style={{
-                  background: isSelected ? `${theme.primary}15` : theme.panelBackground,
-                  borderColor: isSelected ? theme.primary : isRest ? theme.line : exCount > 0 ? `${theme.primary}40` : theme.line,
-                }}
-              >
-                <div className="text-xs font-black mb-1" style={{ color: isSelected ? theme.primary : isRest ? theme.textMuted : theme.text }}>
-                  {label}
-                </div>
-                <div className="text-[10px]" style={{ color: isRest ? theme.textMuted : exCount > 0 ? theme.primary : theme.textMuted }}>
-                  {isRest ? '휴식' : exCount > 0 ? `${exCount}종목` : '없음'}
-                </div>
-              </button>
-            );
-          })}
-        </div>
+  // ——— Drag-to-reorder sets ———
+  const handleSetDragStart = (idx: number) => {
+    setDragFromSetIdx(idx);
+  };
 
-        {/* 선택된 요일 편집 */}
-        {editDayOfWeek !== null && editDay && (
-          <div className="rounded-2xl border p-4 md:p-5 space-y-4" style={{ background: theme.panelBackground, borderColor: theme.panelBorder }}>
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-bold" style={{ color: theme.text }}>{DAY_LABELS[editDayOfWeek]}요일</h2>
-              <button
-                onClick={() => handleToggleRestDay(editDayOfWeek)}
-                className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold border transition-all"
-                style={{
-                  background: editDay.isRestDay ? `${theme.primary}15` : 'transparent',
-                  borderColor: editDay.isRestDay ? theme.primary : theme.line,
-                  color: editDay.isRestDay ? theme.primary : theme.textMuted,
-                }}
-              >
-                <BedDouble className="h-3.5 w-3.5" />
-                {editDay.isRestDay ? '휴식일 해제' : '휴식일 설정'}
-              </button>
-            </div>
+  const handleSetDragOver = (e: React.DragEvent, idx: number) => {
+    e.preventDefault();
+    setDragOverSetIdx(idx);
+  };
 
-            {!editDay.isRestDay && (
-              <>
-                <input
-                  type="text"
-                  defaultValue={editDay.routineName || ''}
-                  onBlur={e => handleUpdateRoutineName(e.target.value)}
-                  placeholder={`${DAY_LABELS[editDayOfWeek]}요일 루틴 이름 (선택)`}
-                  className="w-full rounded-xl border px-3 py-2 text-sm outline-none"
-                  style={{ background: theme.navBackground, borderColor: theme.line, color: theme.text }}
-                />
-
-                <div className="space-y-2">
-                  {editDay.exercises.map((exercise, exIdx) => {
-                    const isEditing = editingExercise?.id === exercise.id;
-                    return (
-                      <div key={exercise.id} className="rounded-xl border overflow-hidden" style={{ borderColor: isEditing ? theme.primary : theme.line }}>
-                        <div className="flex items-center gap-3 p-3" style={{ background: isEditing ? `${theme.primary}08` : theme.navBackground }}>
-                          <div className="h-7 w-7 rounded-lg flex items-center justify-center text-xs font-black shrink-0" style={{ background: `${theme.primary}15`, color: theme.primary }}>
-                            {exIdx + 1}
-                          </div>
-                          <span className="flex-1 text-sm font-bold" style={{ color: theme.text }}>{exercise.name}</span>
-                          <span className="text-xs" style={{ color: theme.textMuted }}>{exercise.sets.filter(s => !s.isWarmup).length}세트</span>
-                          <button
-                            onClick={() => {
-                              if (isEditing) { setEditingExercise(null); setEditingExerciseIdx(null); }
-                              else { setEditingExercise({ ...exercise, sets: exercise.sets.map(s => ({ ...s })) }); setEditingExerciseIdx(exIdx); }
-                            }}
-                            className="h-7 w-7 rounded-lg flex items-center justify-center"
-                            style={{ background: isEditing ? `${theme.primary}20` : theme.line, color: isEditing ? theme.primary : theme.textMuted }}
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleRemoveExercise(exercise.id)}
-                            className="h-7 w-7 rounded-lg flex items-center justify-center"
-                            style={{ background: `#ef444420`, color: '#ef4444' }}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-
-                        {isEditing && editingExercise && (
-                          <div className="p-3 space-y-2" style={{ borderTop: `1px solid ${theme.line}` }}>
-                            <input
-                              type="text"
-                              value={editingExercise.name}
-                              onChange={e => setEditingExercise({ ...editingExercise, name: e.target.value })}
-                              className="w-full rounded-xl border px-3 py-2 text-sm font-bold outline-none mb-3"
-                              style={{ background: theme.navBackground, borderColor: theme.line, color: theme.text }}
-                            />
-                            <div className="grid grid-cols-[40px_1fr_1fr_32px] gap-2 px-1">
-                              {['세트', '무게(kg)', '횟수', ''].map(h => (
-                                <span key={h} className="text-[10px] font-semibold text-center" style={{ color: theme.textMuted }}>{h}</span>
-                              ))}
-                            </div>
-                            {editingExercise.sets.map((set, sIdx) => (
-                              <div key={set.id} className="grid grid-cols-[40px_1fr_1fr_32px] gap-2 items-center">
-                                <div className="flex justify-center">
-                                  <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-lg" style={{ background: set.isWarmup ? `${theme.textMuted}15` : `${theme.primary}15`, color: set.isWarmup ? theme.textMuted : theme.primary }}>
-                                    {set.isWarmup ? 'W' : sIdx - editingExercise.sets.filter((s, i) => s.isWarmup && i < sIdx).length + 1}
-                                  </span>
-                                </div>
-                                <div className="flex items-center justify-center gap-1">
-                                  <button onClick={() => updateEditSet(sIdx, 'weight', -2.5)} className="h-6 w-6 rounded-lg flex items-center justify-center" style={{ background: theme.line, color: theme.textMuted }}><Minus className="h-3 w-3" /></button>
-                                  <span className="text-xs font-bold w-9 text-center" style={{ color: theme.text }}>{set.weight}</span>
-                                  <button onClick={() => updateEditSet(sIdx, 'weight', 2.5)} className="h-6 w-6 rounded-lg flex items-center justify-center" style={{ background: theme.line, color: theme.textMuted }}><Plus className="h-3 w-3" /></button>
-                                </div>
-                                <div className="flex items-center justify-center gap-1">
-                                  <button onClick={() => updateEditSet(sIdx, 'reps', -1)} className="h-6 w-6 rounded-lg flex items-center justify-center" style={{ background: theme.line, color: theme.textMuted }}><Minus className="h-3 w-3" /></button>
-                                  <span className="text-xs font-bold w-9 text-center" style={{ color: theme.text }}>{set.reps}</span>
-                                  <button onClick={() => updateEditSet(sIdx, 'reps', 1)} className="h-6 w-6 rounded-lg flex items-center justify-center" style={{ background: theme.line, color: theme.textMuted }}><Plus className="h-3 w-3" /></button>
-                                </div>
-                                <button onClick={() => removeSetFromEditExercise(sIdx)} className="h-6 w-6 rounded-lg flex items-center justify-center mx-auto" style={{ background: `#ef444420`, color: '#ef4444' }}>
-                                  <X className="h-3 w-3" />
-                                </button>
-                              </div>
-                            ))}
-                            <div className="flex gap-2 pt-1">
-                              <button onClick={() => addSetToEditExercise(false)} className="flex-1 flex items-center justify-center gap-1 rounded-xl py-1.5 text-xs font-bold border" style={{ borderColor: theme.line, color: theme.textSecondary }}>
-                                <Plus className="h-3 w-3" /> 세트 추가
-                              </button>
-                              <button onClick={() => addSetToEditExercise(true)} className="flex-1 flex items-center justify-center gap-1 rounded-xl py-1.5 text-xs font-bold border" style={{ borderColor: theme.line, color: theme.textMuted }}>
-                                <Plus className="h-3 w-3" /> 워밍업 추가
-                              </button>
-                              <button onClick={handleSaveExercise} className="rounded-xl px-4 py-1.5 text-xs font-bold text-white" style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.secondary})` }}>
-                                저장
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {showAddExercise ? (
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={newExerciseName}
-                      onChange={e => setNewExerciseName(e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && handleAddExercise()}
-                      placeholder="운동 이름 입력"
-                      autoFocus
-                      className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none"
-                      style={{ background: theme.navBackground, borderColor: theme.line, color: theme.text }}
-                    />
-                    <button onClick={handleAddExercise} className="rounded-xl px-4 py-2 text-sm font-bold text-white" style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.secondary})` }}>추가</button>
-                    <button onClick={() => { setShowAddExercise(false); setNewExerciseName(''); }} className="rounded-xl px-3 py-2 text-sm border" style={{ borderColor: theme.line, color: theme.textMuted }}>
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                ) : (
-                  <button onClick={() => setShowAddExercise(true)} className="w-full flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold border border-dashed" style={{ borderColor: theme.primary, color: theme.primary }}>
-                    <Plus className="h-4 w-4" /> 운동 추가
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  }
+  const handleSetDrop = () => {
+    if (dragFromSetIdx === null || dragOverSetIdx === null || !editingExercise) return;
+    if (dragFromSetIdx === dragOverSetIdx) {
+      setDragFromSetIdx(null);
+      setDragOverSetIdx(null);
+      return;
+    }
+    const newSets = [...editingExercise.sets];
+    const [moved] = newSets.splice(dragFromSetIdx, 1);
+    newSets.splice(dragOverSetIdx, 0, moved);
+    setEditingExercise({ ...editingExercise, sets: newSets });
+    setDragFromSetIdx(null);
+    setDragOverSetIdx(null);
+  };
 
   // ════════════════════════════════════════════════════════════
   // ——— Nike Run 트래킹 화면 ———
@@ -663,13 +493,19 @@ export function WorkoutTab({ theme }: WorkoutTabProps) {
     const setDisplayNum = currentSet?.isWarmup ? 'W' : (session.currentSetIdx - warmupCount + 1).toString();
     const totalMainSets = currentEx?.sets.filter(s => !s.isWarmup).length || 0;
     const nextEx = session.exercises[session.currentExerciseIdx + 1];
+    const isLastSetInEx = session.currentSetIdx === (currentEx?.sets.length ?? 0) - 1;
+    const isLastEx = session.currentExerciseIdx === session.exercises.length - 1;
+    const isAbsolutelyLast = isLastSetInEx && isLastEx;
 
     return (
       <div className="mx-auto max-w-[600px] p-3 md:p-5 space-y-4 min-h-[80vh] flex flex-col">
         {/* 헤더 */}
         <div className="flex items-center justify-between">
           <button
-            onClick={() => setShowFinishConfirm(true)}
+            onClick={() => {
+              setConfirmedElapsedSeconds(elapsedSeconds);
+              setShowFinishConfirm(true);
+            }}
             className="flex items-center gap-2 rounded-2xl px-3 py-2 text-sm font-bold border"
             style={{ borderColor: theme.line, color: theme.textMuted }}
           >
@@ -827,19 +663,34 @@ export function WorkoutTab({ theme }: WorkoutTabProps) {
                 </div>
               </div>
 
-              {/* 세트 완료 버튼 */}
-              <motion.button
-                whileTap={{ scale: 0.97 }}
-                onClick={completeCurrentSet}
-                className="w-full py-4 rounded-2xl text-white font-black text-lg flex items-center justify-center gap-3"
-                style={{
-                  background: `linear-gradient(135deg, ${theme.primary}, ${theme.secondary || theme.primary})`,
-                  boxShadow: `0 8px 32px ${theme.primary}50`,
-                }}
-              >
-                <Check className="h-6 w-6" />
-                세트 완료
-              </motion.button>
+              {/* 세트 완료 버튼 / 운동 종료 버튼 */}
+              {isAbsolutelyLast ? (
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
+                  onClick={completeCurrentSet}
+                  className="w-full py-4 rounded-2xl text-white font-black text-lg flex items-center justify-center gap-3"
+                  style={{
+                    background: `linear-gradient(135deg, #ef4444, #dc2626)`,
+                    boxShadow: `0 8px 32px #ef444450`,
+                  }}
+                >
+                  <Trophy className="h-6 w-6" />
+                  운동 종료
+                </motion.button>
+              ) : (
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
+                  onClick={completeCurrentSet}
+                  className="w-full py-4 rounded-2xl text-white font-black text-lg flex items-center justify-center gap-3"
+                  style={{
+                    background: `linear-gradient(135deg, ${theme.primary}, ${theme.secondary || theme.primary})`,
+                    boxShadow: `0 8px 32px ${theme.primary}50`,
+                  }}
+                >
+                  <Check className="h-6 w-6" />
+                  세트 완료
+                </motion.button>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
@@ -864,7 +715,7 @@ export function WorkoutTab({ theme }: WorkoutTabProps) {
               >
                 <Trophy className="h-12 w-12 mx-auto mb-3" style={{ color: theme.primary }} />
                 <h3 className="text-xl font-black mb-2" style={{ color: theme.text }}>운동 종료</h3>
-                <p className="text-sm mb-1" style={{ color: theme.textSecondary }}>운동 시간: {formatTime(elapsedSeconds)}</p>
+                <p className="text-sm mb-1" style={{ color: theme.textSecondary }}>운동 시간: {formatTime(confirmedElapsedSeconds)}</p>
                 <p className="text-sm mb-4" style={{ color: theme.textSecondary }}>완료 세트: {completedSetsCount}/{totalSetsCount}</p>
                 <div className="flex gap-3">
                   <button onClick={() => setShowFinishConfirm(false)} className="flex-1 rounded-2xl py-3 text-sm font-bold border" style={{ borderColor: theme.line, color: theme.textMuted }}>
@@ -972,7 +823,7 @@ export function WorkoutTab({ theme }: WorkoutTabProps) {
 
         <motion.button
           whileTap={{ scale: 0.98 }}
-          onClick={finishWorkout}
+          onClick={async () => { await finishWorkout(); }}
           className="w-full py-4 rounded-2xl text-white font-bold flex items-center justify-center gap-2"
           style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.secondary || theme.primary})`, boxShadow: `0 8px 24px ${theme.primary}40` }}
         >
@@ -988,7 +839,6 @@ export function WorkoutTab({ theme }: WorkoutTabProps) {
   // ════════════════════════════════════════════════════════════
   const selectedDayPlan = currentWeekPlan?.days.find(d => d.dayOfWeek === selectedDay);
   const isRestDay = selectedDayPlan?.isRestDay ?? false;
-  const hasNoExercises = !selectedDayPlan || selectedDayPlan.exercises.length === 0;
   const anyChecked = planExercises.some(ex => ex.sets.some((_, sIdx) => checkedSets.has(`${ex.id}-${sIdx}`)));
 
   return (
@@ -999,14 +849,24 @@ export function WorkoutTab({ theme }: WorkoutTabProps) {
           <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: theme.textMuted }}>Training</p>
           <h1 className="text-2xl font-black" style={{ color: theme.text }}>운동 탭</h1>
         </div>
-        <button
-          onClick={() => { setIsEditMode(true); setEditWeek(currentWeek); }}
-          className="flex items-center gap-1.5 rounded-2xl px-3 py-2 text-xs font-bold border mt-1"
-          style={{ borderColor: theme.line, color: theme.textSecondary, background: theme.panelBackground }}
-        >
-          <Pencil className="h-3.5 w-3.5" />
-          루틴 편집
-        </button>
+      </div>
+
+      {/* 주차 선택 */}
+      <div className="flex gap-2">
+        {[1, 2, 3, 4].map(w => (
+          <button
+            key={w}
+            onClick={() => setSelectedWeek(w)}
+            className="flex-1 rounded-2xl py-2.5 text-sm font-bold border transition-all"
+            style={{
+              background: selectedWeek === w ? theme.primary : theme.panelBackground,
+              borderColor: selectedWeek === w ? theme.primary : theme.line,
+              color: selectedWeek === w ? '#fff' : theme.textSecondary,
+            }}
+          >
+            {w}주차
+          </button>
+        ))}
       </div>
 
       {/* 요일 선택 바 (월~일 순서) */}
@@ -1016,7 +876,7 @@ export function WorkoutTab({ theme }: WorkoutTabProps) {
           const isRest = dayPlan?.isRestDay ?? false;
           const exCount = dayPlan?.exercises.length ?? 0;
           const isSelected = selectedDay === dow;
-          const isToday = dow === todayDayOfWeek;
+          const isTodayDow = dow === todayDayOfWeek;
           return (
             <motion.button
               key={dow}
@@ -1027,21 +887,46 @@ export function WorkoutTab({ theme }: WorkoutTabProps) {
                 background: isSelected
                   ? `linear-gradient(135deg, ${theme.primary}, ${theme.secondary || theme.primary})`
                   : theme.panelBackground,
-                borderColor: isSelected ? theme.primary : isToday ? `${theme.primary}60` : theme.line,
+                borderColor: isSelected ? theme.primary : isTodayDow ? `${theme.primary}60` : theme.line,
               }}
             >
-              <div className="text-xs font-black mb-0.5" style={{ color: isSelected ? '#fff' : isToday ? theme.primary : theme.text }}>
+              <div className="text-xs font-black mb-0.5" style={{ color: isSelected ? '#fff' : isTodayDow ? theme.primary : theme.text }}>
                 {DAY_LABELS[dow]}
               </div>
               <div className="text-[9px]" style={{ color: isSelected ? 'rgba(255,255,255,0.7)' : isRest ? theme.textMuted : exCount > 0 ? theme.primary : theme.textMuted }}>
                 {isRest ? '휴식' : exCount > 0 ? `${exCount}종` : '없음'}
               </div>
-              {isToday && !isSelected && (
+              {isTodayDow && !isSelected && (
                 <div className="h-1 w-1 rounded-full mx-auto mt-0.5" style={{ background: theme.primary }} />
               )}
             </motion.button>
           );
         })}
+      </div>
+
+      {/* 루틴 이름 + 휴식일 토글 */}
+      <div className="flex items-center gap-3">
+        <input
+          type="text"
+          key={`routine-${selectedWeek}-${selectedDay}`}
+          defaultValue={selectedDayPlan?.routineName || ''}
+          onBlur={e => updateDayRoutine(selectedWeek, selectedDay, { routineName: e.target.value })}
+          placeholder={`${DAY_LABELS[selectedDay]}요일 루틴 이름 (선택)`}
+          className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none"
+          style={{ background: theme.navBackground, borderColor: theme.line, color: theme.text }}
+        />
+        <button
+          onClick={handleToggleRestDay}
+          className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold border transition-all shrink-0"
+          style={{
+            background: isRestDay ? `${theme.primary}15` : 'transparent',
+            borderColor: isRestDay ? theme.primary : theme.line,
+            color: isRestDay ? theme.primary : theme.textMuted,
+          }}
+        >
+          <BedDouble className="h-3.5 w-3.5" />
+          {isRestDay ? '휴식 해제' : '휴식일'}
+        </button>
       </div>
 
       {/* 오늘 운동 완료 배너 */}
@@ -1060,30 +945,42 @@ export function WorkoutTab({ theme }: WorkoutTabProps) {
         </motion.div>
       )}
 
-      {/* 선택된 요일 운동 계획 */}
-      {isRestDay || hasNoExercises ? (
+      {/* 휴식일 표시 */}
+      {isRestDay ? (
         <div
           className="rounded-2xl border p-10 text-center"
           style={{ background: theme.panelBackground, borderColor: theme.panelBorder }}
         >
-          <Dumbbell className="h-8 w-8 mx-auto mb-2 opacity-20" style={{ color: theme.textMuted }} />
+          <BedDouble className="h-8 w-8 mx-auto mb-2 opacity-30" style={{ color: theme.textMuted }} />
           <p className="text-sm font-semibold mb-1" style={{ color: theme.text }}>
-            {isRestDay ? `${DAY_LABELS[selectedDay]}요일은 휴식일이에요` : '루틴이 없어요'}
+            {DAY_LABELS[selectedDay]}요일은 휴식일이에요
           </p>
           <p className="text-xs" style={{ color: theme.textMuted }}>
-            {isRestDay ? '다른 요일을 선택하거나 루틴 편집에서 변경하세요' : '루틴 편집 버튼을 눌러 운동을 추가하세요'}
+            다른 요일을 선택하거나 위의 버튼으로 변경하세요
           </p>
         </div>
       ) : (
         <>
+          {/* 운동 카드 목록 */}
           <div className="space-y-3">
+            {planExercises.length === 0 && !showAddExercise && (
+              <div
+                className="rounded-2xl border p-10 text-center"
+                style={{ background: theme.panelBackground, borderColor: theme.panelBorder }}
+              >
+                <Dumbbell className="h-8 w-8 mx-auto mb-2 opacity-20" style={{ color: theme.textMuted }} />
+                <p className="text-sm font-semibold mb-1" style={{ color: theme.text }}>루틴이 없어요</p>
+                <p className="text-xs" style={{ color: theme.textMuted }}>아래 버튼으로 운동을 추가하세요</p>
+              </div>
+            )}
+
             {planExercises.map((exercise, exIdx) => {
               const isExpanded = expandedPlanExercises.has(exIdx);
+              const isEditOpen = editingExerciseId === exercise.id;
               const allSetKeys = exercise.sets.map((_, sIdx) => `${exercise.id}-${sIdx}`);
               const checkedCount = allSetKeys.filter(k => checkedSets.has(k)).length;
-              const allChecked = checkedCount === exercise.sets.length;
+              const allChecked = checkedCount === exercise.sets.length && exercise.sets.length > 0;
               const someChecked = checkedCount > 0 && !allChecked;
-              const mainSets = exercise.sets.filter(s => !s.isWarmup);
 
               return (
                 <motion.div
@@ -1093,7 +990,7 @@ export function WorkoutTab({ theme }: WorkoutTabProps) {
                   animate={{
                     borderColor: allChecked && exercise.sets.length > 0
                       ? theme.primary
-                      : theme.panelBorder,
+                      : isEditOpen ? `${theme.primary}60` : theme.panelBorder,
                     boxShadow: allChecked && exercise.sets.length > 0
                       ? `0 0 0 1px ${theme.primary}40`
                       : 'none',
@@ -1102,7 +999,7 @@ export function WorkoutTab({ theme }: WorkoutTabProps) {
                   style={{ background: theme.panelBackground }}
                 >
                   {/* 운동 헤더 */}
-                  <div className="flex items-center gap-3 p-3.5">
+                  <div className="flex items-center gap-2 p-3.5">
                     {/* 종목 체크박스 */}
                     <motion.button
                       whileTap={{ scale: 0.85 }}
@@ -1118,7 +1015,7 @@ export function WorkoutTab({ theme }: WorkoutTabProps) {
                     </motion.button>
 
                     <div
-                      className="h-8 w-8 rounded-xl flex items-center justify-center text-xs font-black shrink-0"
+                      className="h-7 w-7 rounded-xl flex items-center justify-center text-xs font-black shrink-0"
                       style={{ background: `${theme.primary}15`, color: theme.primary }}
                     >
                       {exIdx + 1}
@@ -1132,6 +1029,34 @@ export function WorkoutTab({ theme }: WorkoutTabProps) {
                       </p>
                     </div>
 
+                    {/* 편집 아이콘 */}
+                    <button
+                      onClick={() => {
+                        openExerciseEdit(exercise);
+                        if (!isExpanded) {
+                          const next = new Set(expandedPlanExercises);
+                          next.add(exIdx);
+                          setExpandedPlanExercises(next);
+                        }
+                      }}
+                      className="h-7 w-7 rounded-lg flex items-center justify-center transition-all"
+                      style={{
+                        background: isEditOpen ? `${theme.primary}20` : theme.navBackground,
+                        color: isEditOpen ? theme.primary : theme.textMuted,
+                      }}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+
+                    {/* 삭제 아이콘 */}
+                    <button
+                      onClick={() => handleRemoveExercise(exercise.id)}
+                      className="h-7 w-7 rounded-lg flex items-center justify-center"
+                      style={{ background: `#ef444420`, color: '#ef4444' }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+
                     {/* 드롭다운 토글 */}
                     <button
                       onClick={() => {
@@ -1139,7 +1064,7 @@ export function WorkoutTab({ theme }: WorkoutTabProps) {
                         if (next.has(exIdx)) next.delete(exIdx); else next.add(exIdx);
                         setExpandedPlanExercises(next);
                       }}
-                      className="h-8 w-8 rounded-xl flex items-center justify-center transition-all"
+                      className="h-7 w-7 rounded-lg flex items-center justify-center transition-all"
                       style={{ background: theme.navBackground, color: theme.textMuted }}
                     >
                       {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -1156,77 +1081,199 @@ export function WorkoutTab({ theme }: WorkoutTabProps) {
                         transition={{ duration: 0.2 }}
                         className="overflow-hidden"
                       >
-                        <div className="px-4 pb-4 space-y-2" style={{ borderTop: `1px solid ${theme.line}` }}>
-                          <div className="grid grid-cols-[32px_32px_1fr_1fr_32px] gap-2 pt-3 pb-1">
-                            {['', '세트', '무게(kg)', '횟수', ''].map((h, i) => (
-                              <span key={i} className="text-[10px] font-semibold text-center" style={{ color: theme.textMuted }}>{h}</span>
-                            ))}
-                          </div>
+                        <div className="px-3 pb-3 space-y-2" style={{ borderTop: `1px solid ${theme.line}` }}>
 
-                          {exercise.sets.map((set, sIdx) => {
-                            const setKey = `${exercise.id}-${sIdx}`;
-                            const isSetChecked = checkedSets.has(setKey);
+                          {/* ——— 편집 패널 ——— */}
+                          {isEditOpen && editingExercise && editingExercise.id === exercise.id && (
+                            <div className="pt-3 space-y-2">
+                              {/* 이름 인라인 편집 */}
+                              <input
+                                type="text"
+                                value={editingExercise.name}
+                                onChange={e => setEditingExercise({ ...editingExercise, name: e.target.value })}
+                                className="w-full rounded-xl border px-3 py-2 text-sm font-bold outline-none"
+                                style={{ background: theme.navBackground, borderColor: theme.line, color: theme.text }}
+                              />
 
-                            return (
-                              <motion.div
-                                key={set.id}
-                                animate={{
-                                  borderColor: isSetChecked ? theme.primary : 'transparent',
-                                  boxShadow: isSetChecked ? `0 0 0 1.5px ${theme.primary}50` : 'none',
-                                  background: isSetChecked ? `${theme.primary}08` : set.isWarmup ? `${theme.textMuted}06` : 'transparent',
-                                }}
-                                transition={{ duration: 0.25 }}
-                                className="grid grid-cols-[32px_32px_1fr_1fr_32px] gap-2 items-center rounded-xl px-1 py-2 border border-transparent"
-                              >
-                                {/* 세트 체크박스 */}
-                                <div className="flex justify-center">
-                                  <motion.button
-                                    whileTap={{ scale: 0.8 }}
-                                    onClick={() => toggleSetCheck(exercise.id, sIdx, exercise)}
-                                    className="h-5 w-5 rounded-md flex items-center justify-center border-2 transition-all"
-                                    style={{
-                                      background: isSetChecked ? theme.primary : 'transparent',
-                                      borderColor: isSetChecked ? theme.primary : theme.line,
+                              {/* 세트 헤더 */}
+                              <div className="grid grid-cols-[24px_32px_1fr_1fr_28px_28px] gap-1.5 px-1">
+                                {['', '세트', '무게(kg)', '횟수', 'W', ''].map((h, i) => (
+                                  <span key={i} className="text-[10px] font-semibold text-center" style={{ color: theme.textMuted }}>{h}</span>
+                                ))}
+                              </div>
+
+                              {/* 세트 행 (드래그 가능) */}
+                              {editingExercise.sets.map((set, sIdx) => (
+                                <div
+                                  key={set.id}
+                                  draggable
+                                  onDragStart={() => handleSetDragStart(sIdx)}
+                                  onDragOver={(e) => handleSetDragOver(e, sIdx)}
+                                  onDrop={handleSetDrop}
+                                  onDragEnd={() => { setDragFromSetIdx(null); setDragOverSetIdx(null); }}
+                                  className="grid grid-cols-[24px_32px_1fr_1fr_28px_28px] gap-1.5 items-center rounded-xl px-1 py-1.5 transition-all"
+                                  style={{
+                                    background: dragOverSetIdx === sIdx && dragFromSetIdx !== sIdx
+                                      ? `${theme.primary}15`
+                                      : dragFromSetIdx === sIdx
+                                      ? `${theme.textMuted}10`
+                                      : 'transparent',
+                                    opacity: dragFromSetIdx === sIdx ? 0.5 : 1,
+                                    cursor: 'grab',
+                                  }}
+                                >
+                                  {/* 드래그 핸들 */}
+                                  <div className="flex justify-center cursor-grab">
+                                    <GripVertical className="h-4 w-4" style={{ color: theme.textMuted }} />
+                                  </div>
+
+                                  {/* 세트 번호 */}
+                                  <div className="flex justify-center">
+                                    <span
+                                      className="text-[11px] font-bold px-1.5 py-0.5 rounded-lg cursor-pointer select-none"
+                                      style={{
+                                        background: set.isWarmup ? `${theme.textMuted}15` : `${theme.primary}15`,
+                                        color: set.isWarmup ? theme.textMuted : theme.primary,
+                                      }}
+                                      onClick={() => setEditingExercise({
+                                        ...editingExercise,
+                                        sets: editingExercise.sets.map((s, i) => i === sIdx ? { ...s, isWarmup: !s.isWarmup } : s)
+                                      })}
+                                      title="클릭해서 워밍업 토글"
+                                    >
+                                      {set.isWarmup ? 'W' : sIdx - editingExercise.sets.filter((s, i) => s.isWarmup && i < sIdx).length + 1}
+                                    </span>
+                                  </div>
+
+                                  {/* 무게 */}
+                                  <div className="flex items-center justify-center gap-0.5">
+                                    <button onClick={() => updateEditSet(sIdx, 'weight', -2.5)} className="h-5 w-5 rounded-md flex items-center justify-center" style={{ background: theme.line, color: theme.textMuted }}><Minus className="h-3 w-3" /></button>
+                                    <span className="text-xs font-bold w-8 text-center" style={{ color: theme.text }}>{set.weight}</span>
+                                    <button onClick={() => updateEditSet(sIdx, 'weight', 2.5)} className="h-5 w-5 rounded-md flex items-center justify-center" style={{ background: theme.line, color: theme.textMuted }}><Plus className="h-3 w-3" /></button>
+                                  </div>
+
+                                  {/* 횟수 */}
+                                  <div className="flex items-center justify-center gap-0.5">
+                                    <button onClick={() => updateEditSet(sIdx, 'reps', -1)} className="h-5 w-5 rounded-md flex items-center justify-center" style={{ background: theme.line, color: theme.textMuted }}><Minus className="h-3 w-3" /></button>
+                                    <span className="text-xs font-bold w-8 text-center" style={{ color: theme.text }}>{set.reps}</span>
+                                    <button onClick={() => updateEditSet(sIdx, 'reps', 1)} className="h-5 w-5 rounded-md flex items-center justify-center" style={{ background: theme.line, color: theme.textMuted }}><Plus className="h-3 w-3" /></button>
+                                  </div>
+
+                                  {/* 워밍업 체크박스 */}
+                                  <div className="flex justify-center">
+                                    <button
+                                      onClick={() => setEditingExercise({
+                                        ...editingExercise,
+                                        sets: editingExercise.sets.map((s, i) => i === sIdx ? { ...s, isWarmup: !s.isWarmup } : s)
+                                      })}
+                                      className="h-5 w-5 rounded-md flex items-center justify-center border transition-all"
+                                      style={{
+                                        background: set.isWarmup ? `${theme.textMuted}30` : 'transparent',
+                                        borderColor: set.isWarmup ? theme.textMuted : theme.line,
+                                      }}
+                                      title="워밍업"
+                                    >
+                                      {set.isWarmup && <Check className="h-3 w-3" style={{ color: theme.textMuted }} />}
+                                    </button>
+                                  </div>
+
+                                  {/* 삭제 */}
+                                  <button onClick={() => removeSetFromEditExercise(sIdx)} className="h-5 w-5 rounded-md flex items-center justify-center mx-auto" style={{ background: `#ef444420`, color: '#ef4444' }}>
+                                    <X className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              ))}
+
+                              {/* 버튼들 */}
+                              <div className="flex gap-2 pt-1">
+                                <button onClick={() => addSetToEditExercise(false)} className="flex-1 flex items-center justify-center gap-1 rounded-xl py-1.5 text-xs font-bold border" style={{ borderColor: theme.line, color: theme.textSecondary }}>
+                                  <Plus className="h-3 w-3" /> 세트 추가
+                                </button>
+                                <button onClick={() => addSetToEditExercise(true)} className="flex-1 flex items-center justify-center gap-1 rounded-xl py-1.5 text-xs font-bold border" style={{ borderColor: theme.line, color: theme.textMuted }}>
+                                  <Plus className="h-3 w-3" /> 워밍업
+                                </button>
+                                <button onClick={handleSaveExercise} className="rounded-xl px-4 py-1.5 text-xs font-bold text-white" style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.secondary || theme.primary})` }}>
+                                  저장
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* ——— 일반 세트 뷰 ——— */}
+                          {!isEditOpen && (
+                            <>
+                              <div className="grid grid-cols-[32px_32px_1fr_1fr_32px] gap-2 pt-3 pb-1">
+                                {['', '세트', '무게(kg)', '횟수', ''].map((h, i) => (
+                                  <span key={i} className="text-[10px] font-semibold text-center" style={{ color: theme.textMuted }}>{h}</span>
+                                ))}
+                              </div>
+
+                              {exercise.sets.map((set, sIdx) => {
+                                const setKey = `${exercise.id}-${sIdx}`;
+                                const isSetChecked = checkedSets.has(setKey);
+
+                                return (
+                                  <motion.div
+                                    key={set.id}
+                                    animate={{
+                                      borderColor: isSetChecked ? theme.primary : 'transparent',
+                                      boxShadow: isSetChecked ? `0 0 0 1.5px ${theme.primary}50` : 'none',
+                                      background: isSetChecked ? `${theme.primary}08` : set.isWarmup ? `${theme.textMuted}06` : 'transparent',
                                     }}
+                                    transition={{ duration: 0.25 }}
+                                    className="grid grid-cols-[32px_32px_1fr_1fr_32px] gap-2 items-center rounded-xl px-1 py-2 border border-transparent"
                                   >
-                                    {isSetChecked && <Check className="h-3 w-3 text-white" />}
-                                  </motion.button>
-                                </div>
+                                    {/* 세트 체크박스 */}
+                                    <div className="flex justify-center">
+                                      <motion.button
+                                        whileTap={{ scale: 0.8 }}
+                                        onClick={() => toggleSetCheck(exercise.id, sIdx, exercise)}
+                                        className="h-5 w-5 rounded-md flex items-center justify-center border-2 transition-all"
+                                        style={{
+                                          background: isSetChecked ? theme.primary : 'transparent',
+                                          borderColor: isSetChecked ? theme.primary : theme.line,
+                                        }}
+                                      >
+                                        {isSetChecked && <Check className="h-3 w-3 text-white" />}
+                                      </motion.button>
+                                    </div>
 
-                                {/* 세트 번호 */}
-                                <div className="flex justify-center">
-                                  <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-lg" style={{ background: set.isWarmup ? `${theme.textMuted}15` : `${theme.primary}15`, color: set.isWarmup ? theme.textMuted : theme.primary }}>
-                                    {set.isWarmup ? 'W' : sIdx - exercise.sets.filter((s, i) => s.isWarmup && i < sIdx).length + 1}
-                                  </span>
-                                </div>
+                                    {/* 세트 번호 */}
+                                    <div className="flex justify-center">
+                                      <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-lg" style={{ background: set.isWarmup ? `${theme.textMuted}15` : `${theme.primary}15`, color: set.isWarmup ? theme.textMuted : theme.primary }}>
+                                        {set.isWarmup ? 'W' : sIdx - exercise.sets.filter((s, i) => s.isWarmup && i < sIdx).length + 1}
+                                      </span>
+                                    </div>
 
-                                {/* 무게 */}
-                                <div className="flex items-center justify-center gap-1">
-                                  <button onClick={() => updatePlanWeight(exercise.id, sIdx, -2.5)} className="h-6 w-6 rounded-lg flex items-center justify-center" style={{ background: theme.navBackground, color: theme.textMuted }}>
-                                    <Minus className="h-3 w-3" />
-                                  </button>
-                                  <span className="text-xs font-bold w-8 text-center" style={{ color: theme.text }}>{set.weight}</span>
-                                  <button onClick={() => updatePlanWeight(exercise.id, sIdx, 2.5)} className="h-6 w-6 rounded-lg flex items-center justify-center" style={{ background: theme.navBackground, color: theme.textMuted }}>
-                                    <Plus className="h-3 w-3" />
-                                  </button>
-                                </div>
+                                    {/* 무게 */}
+                                    <div className="flex items-center justify-center gap-1">
+                                      <button onClick={() => updatePlanWeight(exercise.id, sIdx, -2.5)} className="h-6 w-6 rounded-lg flex items-center justify-center" style={{ background: theme.navBackground, color: theme.textMuted }}>
+                                        <Minus className="h-3 w-3" />
+                                      </button>
+                                      <span className="text-xs font-bold w-8 text-center" style={{ color: theme.text }}>{set.weight}</span>
+                                      <button onClick={() => updatePlanWeight(exercise.id, sIdx, 2.5)} className="h-6 w-6 rounded-lg flex items-center justify-center" style={{ background: theme.navBackground, color: theme.textMuted }}>
+                                        <Plus className="h-3 w-3" />
+                                      </button>
+                                    </div>
 
-                                {/* 횟수 */}
-                                <div className="flex items-center justify-center gap-1">
-                                  <button onClick={() => updatePlanReps(exercise.id, sIdx, -1)} className="h-6 w-6 rounded-lg flex items-center justify-center" style={{ background: theme.navBackground, color: theme.textMuted }}>
-                                    <Minus className="h-3 w-3" />
-                                  </button>
-                                  <span className="text-xs font-bold w-8 text-center" style={{ color: theme.text }}>{set.reps}</span>
-                                  <button onClick={() => updatePlanReps(exercise.id, sIdx, 1)} className="h-6 w-6 rounded-lg flex items-center justify-center" style={{ background: theme.navBackground, color: theme.textMuted }}>
-                                    <Plus className="h-3 w-3" />
-                                  </button>
-                                </div>
+                                    {/* 횟수 */}
+                                    <div className="flex items-center justify-center gap-1">
+                                      <button onClick={() => updatePlanReps(exercise.id, sIdx, -1)} className="h-6 w-6 rounded-lg flex items-center justify-center" style={{ background: theme.navBackground, color: theme.textMuted }}>
+                                        <Minus className="h-3 w-3" />
+                                      </button>
+                                      <span className="text-xs font-bold w-8 text-center" style={{ color: theme.text }}>{set.reps}</span>
+                                      <button onClick={() => updatePlanReps(exercise.id, sIdx, 1)} className="h-6 w-6 rounded-lg flex items-center justify-center" style={{ background: theme.navBackground, color: theme.textMuted }}>
+                                        <Plus className="h-3 w-3" />
+                                      </button>
+                                    </div>
 
-                                {/* 빈 공간 (정렬용) */}
-                                <div />
-                              </motion.div>
-                            );
-                          })}
+                                    {/* 빈 공간 */}
+                                    <div />
+                                  </motion.div>
+                                );
+                              })}
+                            </>
+                          )}
                         </div>
                       </motion.div>
                     )}
@@ -1235,6 +1282,34 @@ export function WorkoutTab({ theme }: WorkoutTabProps) {
               );
             })}
           </div>
+
+          {/* 운동 추가 섹션 */}
+          {showAddExercise ? (
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newExerciseName}
+                onChange={e => setNewExerciseName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleAddExercise()}
+                placeholder="운동 이름 입력"
+                autoFocus
+                className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none"
+                style={{ background: theme.navBackground, borderColor: theme.line, color: theme.text }}
+              />
+              <button onClick={handleAddExercise} className="rounded-xl px-4 py-2 text-sm font-bold text-white" style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.secondary || theme.primary})` }}>추가</button>
+              <button onClick={() => { setShowAddExercise(false); setNewExerciseName(''); }} className="rounded-xl px-3 py-2 text-sm border" style={{ borderColor: theme.line, color: theme.textMuted }}>
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowAddExercise(true)}
+              className="w-full flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold border border-dashed"
+              style={{ borderColor: theme.primary, color: theme.primary }}
+            >
+              <Plus className="h-4 w-4" /> 운동 추가
+            </button>
+          )}
 
           {/* 하단 액션 버튼 */}
           <div className="flex gap-3 pt-2">

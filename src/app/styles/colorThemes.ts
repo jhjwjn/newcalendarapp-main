@@ -67,72 +67,64 @@ export const PLANNER_GLASS_THEMES_DARK = {
 // 헬스 앱 Dynamic 스타일 색상 (강렬하고 역동적으로)
 export const HEALTH_DYNAMIC_THEMES = {
   orange: {
-    primary: '#F97316',       // 에너지 오렌지
-    secondary: '#FB923C',     // 라이트 탠저린
-    tertiary: '#FDBA74',      // 샌드 오렌지
-    accent1: '#DC2626',       // 딥 레드
-    accent2: '#7C3AED',       // 스포츠 퍼플
+    primary: '#F97316',
+    secondary: '#EA580C',
+    tertiary: '#C2410C',
+    accent1: '#EF4444',
+    accent2: '#8B5CF6',
   },
   red: {
-    primary: '#E11D48',       // 퍼포먼스 레드
-    secondary: '#F43F5E',     // 로즈 레드
-    tertiary: '#FB7185',      // 소프트 핑크 레드
-    accent1: '#7C3AED',       // 바이올렛
-    accent2: '#F59E0B',       // 웜 앰버
+    primary: '#DC2626',
+    secondary: '#EF4444',
+    tertiary: '#F87171',
+    accent1: '#7C3AED',
+    accent2: '#F59E0B',
   },
   blue: {
-    primary: '#2563EB',       // 코발트 블루
-    secondary: '#3B82F6',     // 브라이트 블루
-    tertiary: '#60A5FA',      // 에어 블루
-    accent1: '#7C3AED',       // 바이올렛
-    accent2: '#EC4899',       // 핑크 펀치
+    primary: '#1D4ED8',
+    secondary: '#2563EB',
+    tertiary: '#3B82F6',
+    accent1: '#7C3AED',
+    accent2: '#06B6D4',
   },
   black: {
-    primary: '#111827',
-    secondary: '#374151',
-    tertiary: '#6B7280',
-    accent1: '#9CA3AF',
-    accent2: '#D1D5DB',
+    primary: '#18181B',
+    secondary: '#27272A',
+    tertiary: '#71717A',
+    accent1: '#A1A1AA',
+    accent2: '#D4D4D8',
   },
 } as const;
 
 // 헬스 앱 다크모드 Dynamic 스타일 (더 강렬한 네온/비비드 계열)
 export const HEALTH_DYNAMIC_THEMES_DARK = {
   orange: {
-    primary: '#FB923C',
-    secondary: '#FDBA74',
+    primary: '#F97316',
+    secondary: '#FB923C',
     tertiary: '#FED7AA',
     accent1: '#F43F5E',
     accent2: '#A855F7',
-    text: '#FFFFFF',
-    background: '#121212',
   },
   red: {
     primary: '#F43F5E',
     secondary: '#FB7185',
-    tertiary: '#FDA4AF',
+    tertiary: '#FCA5A5',
     accent1: '#A855F7',
-    accent2: '#F59E0B',
-    text: '#FFFFFF',
-    background: '#121212',
+    accent2: '#FBBF24',
   },
   blue: {
-    primary: '#60A5FA',
-    secondary: '#818CF8',
-    tertiary: '#A5B4FC',
-    accent1: '#C084FC',
-    accent2: '#F472B6',
-    text: '#FFFFFF',
-    background: '#121212',
+    primary: '#3B82F6',
+    secondary: '#60A5FA',
+    tertiary: '#BAE6FD',
+    accent1: '#A78BFA',
+    accent2: '#34D399',
   },
   black: {
     primary: '#F8FAFC',
-    secondary: '#CBD5E1',
+    secondary: '#E2E8F0',
     tertiary: '#94A3B8',
-    accent1: '#E2E8F0',
+    accent1: '#CBD5E1',
     accent2: '#FFFFFF',
-    text: '#FFFFFF',
-    background: '#121212',
   },
 };
 

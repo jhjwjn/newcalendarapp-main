@@ -56,7 +56,10 @@ export function SettingsTab() {
 
   useEffect(() => {
     if (user) {
-      getMyConnection(user.id).then(setPartnerConn);
+      getMyConnection(user.id).then(conn => {
+        setPartnerConn(conn);
+        if (conn?.connectionCode) setPartnerCode(conn.connectionCode);
+      });
     }
   }, [user]);
 
@@ -248,20 +251,39 @@ export function SettingsTab() {
                 </h2>
               </div>
 
+              {/* Info note about partner calendar visibility */}
+              <p className="text-xs mb-3 rounded-xl p-2.5" style={{ background: `#f43f5e10`, color: theme.textMuted, border: `1px solid #f43f5e20` }}>
+                💡 파트너 일정은 캘린더 탭에서 빨간 하트 점(❤️)으로 표시됩니다.
+              </p>
+
               {partnerConn?.status === 'active' ? (
                 <div className="space-y-3">
                   <div className="flex items-center gap-2 rounded-2xl p-3" style={{ background: `#f43f5e15` }}>
                     <Link2 className="h-4 w-4" style={{ color: '#f43f5e' }} />
                     <p className="text-sm font-semibold" style={{ color: theme.text }}>파트너와 연결됨</p>
                   </div>
-                  <button
-                    onClick={handleDisconnect}
-                    disabled={partnerLoading}
-                    className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold border"
-                    style={{ borderColor: theme.line, color: '#f43f5e' }}
-                  >
-                    <Unlink className="h-3.5 w-3.5" /> 연결 해제
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        if (window.confirm('파트너 연결이 해제됩니다. 새 코드를 생성하시겠습니까?')) {
+                          handleGenerateCode();
+                        }
+                      }}
+                      disabled={partnerLoading}
+                      className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold border"
+                      style={{ borderColor: theme.line, color: theme.textSecondary }}
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" /> 코드 재생성
+                    </button>
+                    <button
+                      onClick={handleDisconnect}
+                      disabled={partnerLoading}
+                      className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold border"
+                      style={{ borderColor: theme.line, color: '#f43f5e' }}
+                    >
+                      <Unlink className="h-3.5 w-3.5" /> 연결 해제
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -269,19 +291,29 @@ export function SettingsTab() {
                   <div>
                     <p className="text-xs mb-2" style={{ color: theme.textMuted }}>내 연결 코드 생성</p>
                     {partnerConn?.connectionCode || partnerCode ? (
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 rounded-2xl border px-4 py-2.5 text-center text-xl font-black tracking-widest" style={{ background: theme.navBackground, borderColor: theme.line, color: theme.primary }}>
-                          {partnerConn?.connectionCode || partnerCode}
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 rounded-2xl border px-4 py-2.5 text-center text-2xl font-black tracking-widest" style={{ background: theme.navBackground, borderColor: theme.line, color: theme.primary }}>
+                            {partnerConn?.connectionCode || partnerCode}
+                          </div>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(partnerConn?.connectionCode || partnerCode);
+                              toast.success('코드가 복사되었습니다');
+                            }}
+                            className="rounded-xl border p-2.5"
+                            style={{ borderColor: theme.line, color: theme.textMuted }}
+                          >
+                            <Copy className="h-4 w-4" />
+                          </button>
                         </div>
                         <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(partnerConn?.connectionCode || partnerCode);
-                            toast.success('코드가 복사되었습니다');
-                          }}
-                          className="rounded-xl border p-2.5"
-                          style={{ borderColor: theme.line, color: theme.textMuted }}
+                          onClick={handleGenerateCode}
+                          disabled={partnerLoading}
+                          className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold border w-full justify-center"
+                          style={{ borderColor: theme.line, color: theme.textSecondary }}
                         >
-                          <Copy className="h-4 w-4" />
+                          <RefreshCw className="h-3.5 w-3.5" /> {partnerLoading ? '생성 중...' : '코드 재생성'}
                         </button>
                       </div>
                     ) : (

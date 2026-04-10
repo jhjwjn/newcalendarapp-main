@@ -176,7 +176,7 @@ export function HealthApp({ onSwitchApp }: HealthAppProps) {
                   transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
                 >
                   {activeTab === 'home' && <HomeTab theme={theme} onStartWorkout={() => setActiveTab('workout')} />}
-                  {activeTab === 'workout' && <WorkoutTab theme={theme} />}
+                  {activeTab === 'workout' && <WorkoutTab theme={theme} onNavigateToRecords={() => setActiveTab('records')} />}
                   {activeTab === 'records' && <RecordsTab theme={theme} />}
                   {activeTab === 'body' && <BodyTab theme={theme} />}
                   {activeTab === 'settings' && <SettingsTab theme={theme} />}
