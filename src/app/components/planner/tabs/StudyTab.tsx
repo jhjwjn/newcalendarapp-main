@@ -1,11 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { addDays, format } from 'date-fns';
+import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   ArrowLeft,
   ArrowRight,
-  BookOpen,
   CheckCircle2,
   Flame,
   History,
@@ -18,8 +17,7 @@ import {
 } from 'lucide-react';
 import { usePlanner } from '../../../context/PlannerContext';
 import { getPlannerTheme } from '../../../lib/plannerTheme';
-import { DailyStudySet, StudyCardProgress, StudyHistoryEntry } from '../../../types/planner';
-import { callGroqAI, createSystemPrompt, createUserMessage } from '../../../lib/ai/groq';
+import { StudyHistoryEntry } from '../../../types/planner';
 import { callGeminiAI, createGeminiMessage } from '../../../lib/ai/gemini';
 import { fetchNewOPICWords, getDailyWords, getOPICStats, markWordAsLearned, OPICWord, saveDailyWords } from '../../../lib/ai/opic';
 import idiomRaw from '../../../../../idioms.json';
@@ -48,14 +46,10 @@ function parseMeanings(raw: string): string[] {
   return raw.split(/\s*\/\s*/).map(s => s.trim()).filter(Boolean);
 }
 
-type StudyMode = 'flashcard' | 'opic' | 'review' | 'writing' | 'history' | 'idiom';
+type StudyMode = 'idiom' | 'opic' | 'writing' | 'history';
 type HistoryFilter = 'all' | 'correct' | 'incorrect';
 
 const HISTORY_STORAGE_KEY = 'planner_study_history';
-const PROGRESS_STORAGE_KEY = 'planner_study_card_progress';
-const DAILY_SET_STORAGE_KEY = 'planner_daily_study_sets';
-const DAILY_TARGET_COUNT = 20;
-const REVIEW_INTERVALS = [1, 3, 7, 14];
 
 function parseStoredObject<T>(key: string, fallback: T): T {
   try {
@@ -66,27 +60,16 @@ function parseStoredObject<T>(key: string, fallback: T): T {
   }
 }
 
-function uniqueIds(ids: string[]) {
-  return ids.filter((cardId, index) => ids.indexOf(cardId) === index);
-}
-
 export function StudyTab() {
-  const { flashCards, studySessions, recordStudySession, settings, events, studyMode, setStudyMode } = usePlanner();
+  const { studySessions, settings, events, studyMode, setStudyMode } = usePlanner();
   const theme = getPlannerTheme(settings);
 
-  const mode = studyMode;
-  const setMode = setStudyMode;
-  const [isFlipped, setIsFlipped] = useState(false);
-  const [sessionCorrect, setSessionCorrect] = useState(0);
-  const [sessionTotal, setSessionTotal] = useState(0);
+  const mode = studyMode as StudyMode;
+  const setMode = (m: StudyMode) => setStudyMode(m as Parameters<typeof setStudyMode>[0]);
   const [writingInput, setWritingInput] = useState('');
   const [writingFeedback, setWritingFeedback] = useState('');
   const [isGeneratingFeedback, setIsGeneratingFeedback] = useState(false);
   const [studyHistory, setStudyHistory] = useState<StudyHistoryEntry[]>([]);
-  const [progressMap, setProgressMap] = useState<Record<string, StudyCardProgress>>({});
-  const [dailySets, setDailySets] = useState<DailyStudySet[]>([]);
-  const [todayDeckIds, setTodayDeckIds] = useState<string[]>([]);
-  const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [expandedHistoryDay, setExpandedHistoryDay] = useState<string | null>(null);
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('all');
   
@@ -110,10 +93,7 @@ export function StudyTab() {
 
   const today = new Date();
   const todayStr = format(today, 'yyyy-MM-dd');
-  const todaySession = studySessions.find(session => session.date === todayStr);
   const currentStreak = studySessions[studySessions.length - 1]?.streak || 0;
-  const aiStudyNote =
-    '오늘 덱은 복습 대상과 분리해서 20문제 기준으로 고정하고, 틀린 카드만 망각곡선에 따라 복습 큐로 넘깁니다.';
   
   const opicStats = getOPICStats();
   const currentOpicWord = opicWords[opicIndex];
@@ -320,93 +300,11 @@ export function StudyTab() {
 
   useEffect(() => {
     setStudyHistory(parseStoredObject(HISTORY_STORAGE_KEY, []));
-    setProgressMap(parseStoredObject(PROGRESS_STORAGE_KEY, {}));
-    setDailySets(parseStoredObject(DAILY_SET_STORAGE_KEY, []));
-    // Restore today's session progress to avoid double-counting on re-mount
-    const saved = parseStoredObject<{ index: number; correct: number; total: number }>(`study_progress_${todayStr}`, { index: 0, correct: 0, total: 0 });
-    if (saved.index > 0) {
-      setCurrentCardIndex(saved.index);
-      setSessionCorrect(saved.correct);
-      setSessionTotal(saved.total);
-    }
   }, []);
 
   useEffect(() => {
     localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(studyHistory));
   }, [studyHistory]);
-
-  useEffect(() => {
-    localStorage.setItem(PROGRESS_STORAGE_KEY, JSON.stringify(progressMap));
-  }, [progressMap]);
-
-  useEffect(() => {
-    localStorage.setItem(DAILY_SET_STORAGE_KEY, JSON.stringify(dailySets));
-  }, [dailySets]);
-
-  useEffect(() => {
-    if (flashCards.length === 0) return;
-
-    const existingSet = dailySets.find(set => set.date === todayStr);
-    if (existingSet) {
-      setTodayDeckIds(existingSet.cardIds.filter(cardId => flashCards.some(card => card.id === cardId)));
-      return;
-    }
-
-    const dueReviewIds = flashCards
-      .filter(card => {
-        const progress = progressMap[card.id];
-        return progress?.status === 'review' && progress.nextReviewAt && progress.nextReviewAt <= new Date().toISOString();
-      })
-      .map(card => card.id);
-
-    const newCardIds = flashCards
-      .filter(card => !progressMap[card.id] || progressMap[card.id].status === 'new')
-      .map(card => card.id);
-
-    const learningCardIds = flashCards
-      .filter(card => {
-        const progress = progressMap[card.id];
-        return progress && progress.status !== 'mastered' && progress.status !== 'review';
-      })
-      .map(card => card.id);
-
-    const untouchedIds = flashCards
-      .map(card => card.id)
-      .filter(cardId => !newCardIds.includes(cardId) && !learningCardIds.includes(cardId) && !dueReviewIds.includes(cardId));
-
-    const masteredIds = flashCards
-      .filter(card => progressMap[card.id]?.status === 'mastered')
-      .map(card => card.id);
-
-    const orderedIds = uniqueIds([
-      ...newCardIds,
-      ...learningCardIds,
-      ...untouchedIds.filter(cardId => !masteredIds.includes(cardId)),
-      ...masteredIds,
-    ]);
-
-    const nextSet: DailyStudySet = {
-      date: todayStr,
-      cardIds: orderedIds.slice(0, Math.min(DAILY_TARGET_COUNT, flashCards.length)),
-      generatedAt: new Date().toISOString(),
-    };
-
-    setDailySets(current => [nextSet, ...current.filter(set => set.date !== todayStr)].slice(0, 30));
-    setTodayDeckIds(nextSet.cardIds);
-  }, [dailySets, flashCards, progressMap, todayStr]);
-
-  const todayDeck = useMemo(() => {
-    return todayDeckIds
-      .map(cardId => flashCards.find(card => card.id === cardId))
-      .filter((card): card is NonNullable<typeof card> => Boolean(card));
-  }, [flashCards, todayDeckIds]);
-
-  const reviewDeck = useMemo(() => {
-    return flashCards.filter(card => {
-      const progress = progressMap[card.id];
-      return progress?.status === 'review' && progress.nextReviewAt && progress.nextReviewAt <= new Date().toISOString();
-    });
-  }, [flashCards, progressMap]);
 
   const groupedHistory = useMemo(() => {
     return [...studyHistory]
@@ -420,10 +318,6 @@ export function StudyTab() {
 
   const historyDays = useMemo(() => Object.keys(groupedHistory), [groupedHistory]);
 
-  const activeDeck = mode === 'review' ? reviewDeck : todayDeck;
-  const currentCard = activeDeck[currentCardIndex];
-  const isLastCard = currentCardIndex >= activeDeck.length - 1;
-  const reviewQueueCount = reviewDeck.length;
   const activeHistoryEntries = useMemo(() => {
     if (!expandedHistoryDay) return [];
     const entries = groupedHistory[expandedHistoryDay] || [];
@@ -432,10 +326,6 @@ export function StudyTab() {
   }, [expandedHistoryDay, groupedHistory, historyFilter]);
 
   useEffect(() => {
-    setCurrentCardIndex(0);
-    setIsFlipped(false);
-    setSessionCorrect(0);
-    setSessionTotal(0);
     setWritingFeedback('');
     setWritingInput('');
   }, [mode]);
@@ -446,319 +336,12 @@ export function StudyTab() {
     }
   }, [expandedHistoryDay, historyDays]);
 
-  const recordAnswer = (result: 'correct' | 'incorrect') => {
-    if (!currentCard) return;
-
-    const now = new Date();
-    const existingProgress = progressMap[currentCard.id] || {
-      cardId: currentCard.id,
-      status: 'new' as const,
-      timesSeen: 0,
-      correctCount: 0,
-      incorrectCount: 0,
-      reviewStep: 0,
-      lastSeenAt: null,
-      nextReviewAt: null,
-      masteredAt: null,
-    };
-
-    let nextProgress: StudyCardProgress;
-
-    if (result === 'correct') {
-      if (existingProgress.status === 'review') {
-        const nextStep = existingProgress.reviewStep + 1;
-        const completedReview = nextStep >= REVIEW_INTERVALS.length;
-        nextProgress = {
-          ...existingProgress,
-          status: completedReview ? 'mastered' : 'review',
-          timesSeen: existingProgress.timesSeen + 1,
-          correctCount: existingProgress.correctCount + 1,
-          reviewStep: nextStep,
-          lastSeenAt: now.toISOString(),
-          nextReviewAt: completedReview ? null : addDays(now, REVIEW_INTERVALS[nextStep]).toISOString(),
-          masteredAt: completedReview ? now.toISOString() : existingProgress.masteredAt,
-        };
-      } else {
-        nextProgress = {
-          ...existingProgress,
-          status: 'mastered',
-          timesSeen: existingProgress.timesSeen + 1,
-          correctCount: existingProgress.correctCount + 1,
-          reviewStep: REVIEW_INTERVALS.length,
-          lastSeenAt: now.toISOString(),
-          nextReviewAt: null,
-          masteredAt: now.toISOString(),
-        };
-      }
-    } else {
-      nextProgress = {
-        ...existingProgress,
-        status: 'review',
-        timesSeen: existingProgress.timesSeen + 1,
-        incorrectCount: existingProgress.incorrectCount + 1,
-        reviewStep: 0,
-        lastSeenAt: now.toISOString(),
-        nextReviewAt: addDays(now, REVIEW_INTERVALS[0]).toISOString(),
-        masteredAt: null,
-      };
-    }
-
-    setProgressMap(current => ({ ...current, [currentCard.id]: nextProgress }));
-
-    const historyEntry: StudyHistoryEntry = {
-      id: `history-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      date: todayStr,
-      reviewedAt: now.toISOString(),
-      cardId: currentCard.id,
-      front: currentCard.front,
-      back: currentCard.back,
-      example: currentCard.example,
-      result,
-      mode: mode === 'review' || existingProgress.status === 'review' ? 'review' : 'daily',
-    };
-
-    setStudyHistory(current => [historyEntry, ...current]);
-  };
-
-  const advanceDeck = (newTotal: number, newCorrect: number) => {
-    setIsFlipped(false);
-    if (isLastCard) {
-      recordStudySession(newTotal, newCorrect);
-      localStorage.removeItem(`study_progress_${todayStr}`);
-      setCurrentCardIndex(activeDeck.length);
-    } else {
-      const nextIndex = currentCardIndex + 1;
-      setCurrentCardIndex(nextIndex);
-      localStorage.setItem(`study_progress_${todayStr}`, JSON.stringify({ index: nextIndex, correct: newCorrect, total: newTotal }));
-    }
-  };
-
-  const handleCorrect = () => {
-    recordAnswer('correct');
-    const newCorrect = sessionCorrect + 1;
-    const newTotal = sessionTotal + 1;
-    setSessionCorrect(newCorrect);
-    setSessionTotal(newTotal);
-    advanceDeck(newTotal, newCorrect);
-  };
-
-  const handleIncorrect = () => {
-    recordAnswer('incorrect');
-    const newTotal = sessionTotal + 1;
-    setSessionTotal(newTotal);
-    advanceDeck(newTotal, sessionCorrect);
-  };
-
-  const handlePrevious = () => {
-    if (currentCardIndex > 0) {
-      setIsFlipped(false);
-      setCurrentCardIndex(current => current - 1);
-    }
-  };
-
-  const restartTodayDeck = () => {
-    setCurrentCardIndex(0);
-    setSessionCorrect(0);
-    setSessionTotal(0);
-    setIsFlipped(false);
-    localStorage.removeItem(`study_progress_${todayStr}`);
-  };
-
   const modeTabs = [
-    { id: 'flashcard' as const, label: '플래시카드', icon: BookOpen },
     { id: 'idiom' as const, label: '영어 표현', icon: MessageSquare },
     { id: 'opic' as const, label: 'OPIC 단어', icon: Sparkles },
-    { id: 'review' as const, label: '복습 모드', icon: RotateCcw },
     { id: 'writing' as const, label: '쓰기 연습', icon: PenSquare },
     { id: 'history' as const, label: 'DAY 기록', icon: History },
   ];
-
-  const renderFlashcardMode = () => {
-    if (!currentCard) {
-      return (
-        <div
-          className="rounded-[22px] border p-6 text-center"
-          style={{
-            background: theme.panelBackground,
-            borderColor: theme.panelBorder,
-            boxShadow: theme.panelShadow,
-          }}
-        >
-          <h3 className="mb-4 text-xl font-semibold" style={{ color: theme.text }}>
-            {mode === 'review' ? '오늘 복습 완료' : '오늘의 학습을 완료했습니다'}
-          </h3>
-          <div className="space-y-2 text-sm" style={{ color: theme.textSecondary }}>
-            {mode === 'review' ? (
-              <>
-                <p>오늘 처리할 복습 카드를 모두 끝냈습니다.</p>
-                <p>새로 틀린 카드가 생기면 다음 복습 시점에 이곳으로 들어옵니다.</p>
-              </>
-            ) : (
-              <>
-                <p>학습한 카드: {sessionTotal}개</p>
-                <p>정답: {sessionCorrect}개</p>
-                <p>정답률: {sessionTotal > 0 ? Math.round((sessionCorrect / sessionTotal) * 100) : 0}%</p>
-              </>
-            )}
-          </div>
-          {mode !== 'review' && (
-            <button
-              onClick={restartTodayDeck}
-              className="mt-6 rounded-2xl px-5 py-3 font-semibold"
-              style={{ background: theme.navActiveBackground, color: theme.navActiveText }}
-            >
-              오늘 덱 다시 보기
-            </button>
-          )}
-        </div>
-      );
-    }
-
-    return (
-      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_196px]">
-        <div
-          className="rounded-[22px] border p-3.5"
-          style={{
-            background: theme.panelBackground,
-            borderColor: theme.panelBorder,
-            boxShadow: theme.panelShadow,
-          }}
-        >
-          <div className="mb-3 flex items-center justify-between text-sm" style={{ color: theme.textMuted }}>
-            <span>
-              {mode === 'review' ? '복습 카드' : '오늘의 카드'} {Math.min(currentCardIndex + 1, activeDeck.length)} / {activeDeck.length}
-            </span>
-            <span>정답 {sessionCorrect} / {sessionTotal}</span>
-          </div>
-
-          <div onClick={() => setIsFlipped(current => !current)} className="relative h-[180px] cursor-pointer perspective-1000 md:h-[360px]">
-            <div
-              className={`absolute inset-0 h-full w-full transition-transform duration-500 transform-style-3d ${
-                isFlipped ? 'rotate-y-180' : ''
-              }`}
-            >
-              <div
-                className="absolute inset-0 flex h-full w-full flex-col items-center justify-center rounded-[24px] px-5 text-white backface-hidden"
-                style={{
-                  background: `linear-gradient(135deg, ${theme.primary}, ${theme.secondary})`,
-                  boxShadow: `0 24px 60px ${theme.primary}30`,
-                }}
-              >
-                <RotateCcw className="mb-2 h-6 w-6 opacity-70" />
-                <h2 className="mb-2 text-2xl font-bold md:text-[2rem]">{currentCard.front}</h2>
-                <p className="text-xs opacity-85">카드를 탭하여 뒤집기</p>
-              </div>
-
-              <div
-                className="absolute inset-0 flex h-full w-full flex-col items-center justify-center rounded-[24px] px-5 text-white backface-hidden rotate-y-180"
-                style={{
-                  background: `linear-gradient(135deg, ${theme.accent1}, ${theme.secondary})`,
-                  boxShadow: `0 24px 60px ${theme.accent1}30`,
-                }}
-              >
-                <h3 className="mb-3 text-lg font-bold md:text-xl">{currentCard.back}</h3>
-                <p className="text-center text-xs italic leading-6 opacity-90 md:text-sm">{currentCard.example}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-4 flex items-center justify-between">
-            <button
-              onClick={handlePrevious}
-              disabled={currentCardIndex === 0}
-              className="rounded-full p-3 transition-colors disabled:opacity-30"
-              style={{ background: theme.navBackground, color: theme.textSecondary }}
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </button>
-
-            <div className="flex gap-2.5">
-              <button
-                onClick={handleIncorrect}
-                className="flex items-center gap-2 rounded-2xl px-3.5 py-2 text-sm font-semibold"
-                style={{ background: `${theme.accent1}18`, color: theme.accent1 }}
-              >
-                <XCircle className="h-5 w-5" />
-                오답
-              </button>
-              <button
-                onClick={handleCorrect}
-                className="flex items-center gap-2 rounded-2xl px-3.5 py-2 text-sm font-semibold"
-                style={{ background: `${theme.tertiary}18`, color: theme.tertiary }}
-              >
-                <CheckCircle2 className="h-5 w-5" />
-                정답
-              </button>
-            </div>
-
-            <button
-              onClick={advanceDeck}
-              className="rounded-full p-3"
-              style={{ background: theme.navBackground, color: theme.textSecondary }}
-            >
-              <ArrowRight className="h-5 w-5" />
-            </button>
-          </div>
-        </div>
-
-        <div
-          className="rounded-[22px] border p-3.5"
-          style={{
-            background: theme.panelBackground,
-            borderColor: theme.panelBorder,
-            boxShadow: theme.panelShadow,
-          }}
-        >
-          <div className="text-xs font-semibold uppercase tracking-[0.24em]" style={{ color: theme.textMuted }}>
-            Study Status
-          </div>
-          <div className="mt-4 space-y-2.5">
-            <div className="rounded-2xl border px-3.5 py-3" style={{ background: theme.navBackground, borderColor: theme.line }}>
-              <div className="text-xs" style={{ color: theme.textMuted }}>오늘 덱</div>
-              <div className="mt-1 text-base font-semibold" style={{ color: theme.text }}>
-                {todayDeck.length}문제
-              </div>
-            </div>
-            <div className="rounded-2xl border px-3.5 py-3" style={{ background: theme.navBackground, borderColor: theme.line }}>
-              <div className="text-xs" style={{ color: theme.textMuted }}>복습 대기</div>
-              <div className="mt-1 text-base font-semibold" style={{ color: theme.text }}>
-                {reviewQueueCount}문제
-              </div>
-            </div>
-            <div className="rounded-2xl border px-3.5 py-3" style={{ background: theme.navBackground, borderColor: theme.line }}>
-              <div className="text-xs" style={{ color: theme.textMuted }}>진행률</div>
-              <div className="mt-1 text-base font-semibold" style={{ color: theme.text }}>
-                {sessionTotal} / {activeDeck.length}
-              </div>
-            </div>
-            {mode === 'review' && (
-              <div className="rounded-2xl border px-3.5 py-3" style={{ background: theme.navBackground, borderColor: theme.line }}>
-                <div className="text-xs" style={{ color: theme.textMuted }}>오늘 복습 상태</div>
-                <div className="mt-1 text-base font-semibold" style={{ color: reviewQueueCount === 0 ? theme.tertiary : theme.text }}>
-                  {reviewQueueCount === 0 ? '완료' : '진행 중'}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <style>{`
-          .perspective-1000 {
-            perspective: 1000px;
-          }
-          .transform-style-3d {
-            transform-style: preserve-3d;
-          }
-          .backface-hidden {
-            backface-visibility: hidden;
-          }
-          .rotate-y-180 {
-            transform: rotateY(180deg);
-          }
-        `}</style>
-      </div>
-    );
-  };
 
   const renderIdiomMode = () => {
     const currentIdiom = idiomDeck[idiomIndex];
@@ -1403,10 +986,10 @@ export function StudyTab() {
 
             <div className="mt-4 space-y-2 rounded-2xl border p-3" style={{ background: theme.navBackground, borderColor: theme.line }}>
               <div className="text-xs" style={{ color: theme.textMuted }}>
-                오늘 학습
+                오늘 표현
               </div>
               <div className="text-sm font-semibold" style={{ color: theme.text }}>
-                {todaySession ? '완료 ✓' : '미완료'}
+                {idiomTotal > 0 ? `${idiomTotal}개 학습` : '미시작'}
               </div>
               <div className="flex items-center gap-1 text-sm" style={{ color: theme.textSecondary }}>
                 <Flame className="h-4 w-4" style={{ color: theme.accent1 }} />
@@ -1434,7 +1017,10 @@ export function StudyTab() {
               </span>
             </div>
             <p className="text-sm font-medium leading-6 md:text-[15px]" style={{ color: theme.text }}>
-              {aiStudyNote}
+              {mode === 'idiom' && `오늘의 영어 표현 ${idiomDeck.length}개 — 카드를 탭하면 뜻이 나타납니다. 알면 ✓, 모르면 ✗로 표시하세요.`}
+              {mode === 'opic' && 'OPIC IH 이상 수준의 단어를 매일 20개씩 학습합니다. 카드를 탭하여 뜻을 확인하세요.'}
+              {mode === 'writing' && '프롬프트를 읽고 영어로 작성한 뒤 AI 피드백을 받아보세요. 매일 다른 주제가 제공됩니다.'}
+              {mode === 'history' && '날짜별 학습 기록을 확인하세요. 정답과 오답을 필터링하여 볼 수 있습니다.'}
             </p>
           </div>
 
@@ -1447,7 +1033,6 @@ export function StudyTab() {
                 exit={{ opacity: 0, y: -10 }}
                 transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
               >
-                {(mode === 'flashcard' || mode === 'review') && renderFlashcardMode()}
                 {mode === 'idiom' && renderIdiomMode()}
                 {mode === 'opic' && renderOpicMode()}
                 {mode === 'writing' && renderWritingMode()}
@@ -1457,6 +1042,12 @@ export function StudyTab() {
           </div>
         </div>
       </div>
+      <style>{`
+        .perspective-1000 { perspective: 1000px; }
+        .transform-style-3d { transform-style: preserve-3d; }
+        .backface-hidden { backface-visibility: hidden; }
+        .rotate-y-180 { transform: rotateY(180deg); }
+      `}</style>
     </div>
   );
 }
