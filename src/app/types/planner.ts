@@ -116,6 +116,7 @@ export interface UserSettings {
   glassAccentDark?: 'blue' | 'purple' | 'peach' | 'black';
   isDarkMode?: boolean;
   groqApiKey: string;
+  geminiApiKey?: string;
 }
 
 export type PlannerSettings = UserSettings;

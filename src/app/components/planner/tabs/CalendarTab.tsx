@@ -6,6 +6,7 @@ import {
   endOfWeek,
   eachDayOfInterval,
   format,
+  isSameDay,
   isSameMonth,
   isToday,
   startOfDay,
@@ -88,6 +89,7 @@ export function CalendarTab({ showRepeatModal = false, setShowRepeatModal }: Cal
   const [workoutModalSelectedDays, setWorkoutModalSelectedDays] = useState<Set<number>>(new Set());
   const [workoutModalDayTimes, setWorkoutModalDayTimes] = useState<Record<number, { startTime: string; endTime: string }>>({});
   const [weekPlansData, setWeekPlansData] = useState<any[]>([]);
+  const [workoutTargetWeek, setWorkoutTargetWeek] = useState<Date | null>(null);
 
   // Drag state
   const [draggingEvent, setDraggingEvent] = useState<CalendarEvent | null>(null);
@@ -242,15 +244,18 @@ export function CalendarTab({ showRepeatModal = false, setShowRepeatModal }: Cal
   };
 
   const handleRegisterWorkoutSchedule = async () => {
+    if (!workoutTargetWeek) { toast.error('등록할 주를 선택해주세요'); return; }
     const plan = weekPlansData.find((p: any) => p.weekNumber === workoutModalWeek);
-    const today = new Date();
     const workoutCategoryId = categories.find(c => c.name === '운동')?.id || categories[0]?.id || '';
     const selectedDays = Array.from(workoutModalSelectedDays).sort();
     const count = selectedDays.length;
+    // workoutTargetWeek is the Monday of the selected week (weekStartsOn: 1)
     await Promise.all(selectedDays.map(async (dayOfWeek) => {
       const dayPlan = plan?.days.find((d: any) => d.dayOfWeek === dayOfWeek);
       const times = workoutModalDayTimes[dayOfWeek] || { startTime: '07:00', endTime: '08:00' };
-      const targetDate = getNextDateForDayOfWeek(dayOfWeek, today);
+      // offset from Monday: Mon=1→+0, Tue=2→+1, ..., Sat=6→+5, Sun=0→+6
+      const offset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+      const targetDate = addDays(workoutTargetWeek, offset);
       const title = dayPlan?.routineName || `운동 - ${DAY_LABELS[dayOfWeek]}요일`;
       try {
         await addEvent({
@@ -267,6 +272,7 @@ export function CalendarTab({ showRepeatModal = false, setShowRepeatModal }: Cal
     }));
     setShowWorkoutModal(false);
     setRightPanelMode('default');
+    setWorkoutTargetWeek(null);
     toast.success(`${count}개의 운동 일정이 등록되었습니다`);
   };
 
@@ -787,20 +793,14 @@ export function CalendarTab({ showRepeatModal = false, setShowRepeatModal }: Cal
                     <div className="w-12" />
                   </div>
                   <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                    {/* 주차 선택 */}
+                    {/* 플랜 선택 */}
                     <div>
-                      <label className="block text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: theme.textMuted }}>주차 선택</label>
+                      <label className="block text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: theme.textMuted }}>플랜 선택</label>
                       <div className="flex gap-2">
                         {[1, 2, 3, 4].map(w => (
-                          <button
-                            key={w}
-                            onClick={() => handleWorkoutWeekChange(w)}
+                          <button key={w} onClick={() => handleWorkoutWeekChange(w)}
                             className="flex-1 rounded-2xl py-2 text-sm font-semibold"
-                            style={{
-                              background: workoutModalWeek === w ? theme.navActiveBackground : theme.navBackground,
-                              color: workoutModalWeek === w ? theme.navActiveText : theme.textMuted,
-                            }}
-                          >
+                            style={{ background: workoutModalWeek === w ? theme.navActiveBackground : theme.navBackground, color: workoutModalWeek === w ? theme.navActiveText : theme.textMuted }}>
                             {w}주차
                           </button>
                         ))}
@@ -808,60 +808,79 @@ export function CalendarTab({ showRepeatModal = false, setShowRepeatModal }: Cal
                     </div>
                     {/* 요일별 시간 설정 */}
                     <div>
-                      <label className="block text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: theme.textMuted }}>요일별 시간 설정</label>
+                      <label className="block text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: theme.textMuted }}>요일 및 시간</label>
                       <div className="space-y-2">
                         {DAY_LABELS.map((label, idx) => {
                           const selected = workoutModalSelectedDays.has(idx);
                           const times = workoutModalDayTimes[idx] || { startTime: '07:00', endTime: '08:00' };
                           return (
                             <div key={idx} className="flex items-center gap-2">
-                              <button
-                                onClick={() => {
-                                  const next = new Set(workoutModalSelectedDays);
-                                  if (next.has(idx)) {
-                                    next.delete(idx);
-                                  } else {
-                                    next.add(idx);
-                                    if (!workoutModalDayTimes[idx]) {
-                                      setWorkoutModalDayTimes(prev => ({ ...prev, [idx]: { startTime: '07:00', endTime: '08:00' } }));
-                                    }
-                                  }
-                                  setWorkoutModalSelectedDays(next);
-                                }}
-                                className="flex items-center gap-2 shrink-0"
-                              >
-                                <div
-                                  className="h-5 w-5 rounded-md flex items-center justify-center border-2 transition-all"
-                                  style={{ background: selected ? theme.primary : 'transparent', borderColor: selected ? theme.primary : theme.line }}
-                                >
+                              <button onClick={() => {
+                                const next = new Set(workoutModalSelectedDays);
+                                if (next.has(idx)) { next.delete(idx); } else { next.add(idx); if (!workoutModalDayTimes[idx]) setWorkoutModalDayTimes(prev => ({ ...prev, [idx]: { startTime: '07:00', endTime: '08:00' } })); }
+                                setWorkoutModalSelectedDays(next);
+                              }} className="flex items-center gap-2 shrink-0">
+                                <div className="h-5 w-5 rounded-md flex items-center justify-center border-2 transition-all"
+                                  style={{ background: selected ? theme.primary : 'transparent', borderColor: selected ? theme.primary : theme.line }}>
                                   {selected && <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
                                 </div>
                                 <span className="text-sm font-bold w-4" style={{ color: selected ? theme.text : theme.textMuted }}>{label}</span>
                               </button>
                               <input type="time" value={times.startTime} onChange={e => setWorkoutModalDayTimes(prev => ({ ...prev, [idx]: { ...times, startTime: e.target.value } }))} disabled={!selected}
                                 className="flex-1 rounded-xl border px-2 py-1.5 text-xs"
-                                style={{ background: selected ? theme.navBackground : theme.line, color: selected ? theme.text : theme.textMuted, borderColor: theme.line, opacity: selected ? 1 : 0.5 }}
-                              />
+                                style={{ background: selected ? theme.navBackground : theme.line, color: selected ? theme.text : theme.textMuted, borderColor: theme.line, opacity: selected ? 1 : 0.5 }} />
                               <span className="text-xs shrink-0" style={{ color: theme.textMuted }}>~</span>
                               <input type="time" value={times.endTime} onChange={e => setWorkoutModalDayTimes(prev => ({ ...prev, [idx]: { ...times, endTime: e.target.value } }))} disabled={!selected}
                                 className="flex-1 rounded-xl border px-2 py-1.5 text-xs"
-                                style={{ background: selected ? theme.navBackground : theme.line, color: selected ? theme.text : theme.textMuted, borderColor: theme.line, opacity: selected ? 1 : 0.5 }}
-                              />
+                                style={{ background: selected ? theme.navBackground : theme.line, color: selected ? theme.text : theme.textMuted, borderColor: theme.line, opacity: selected ? 1 : 0.5 }} />
                             </div>
                           );
                         })}
                       </div>
                     </div>
-                    <p className="text-xs" style={{ color: theme.textMuted }}>
-                      선택한 요일의 다음 날짜부터 캘린더에 운동 일정이 등록됩니다.
-                    </p>
-                    <button
-                      onClick={handleRegisterWorkoutSchedule}
-                      disabled={workoutModalSelectedDays.size === 0}
+                    {/* 캘린더 주 선택 */}
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: theme.textMuted }}>등록할 주 선택</label>
+                      <div className="space-y-2">
+                        {Array.from({ length: 5 }, (_, i) => {
+                          const weekStart = addDays(startOfWeek(new Date(), { weekStartsOn: 1 }), i * 7);
+                          const isSelected = workoutTargetWeek !== null && isSameDay(weekStart, workoutTargetWeek);
+                          return (
+                            <button key={i} onClick={() => setWorkoutTargetWeek(weekStart)}
+                              className="w-full rounded-2xl p-3 text-left transition-all"
+                              style={{ border: `2px ${isSelected ? 'solid' : 'dashed'} ${isSelected ? theme.primary : theme.line}`, background: isSelected ? `${theme.primary}10` : 'transparent' }}>
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-xs font-bold" style={{ color: isSelected ? theme.primary : theme.textSecondary }}>
+                                  {i === 0 ? '이번주' : `${i}주 후`} · {format(weekStart, 'M/d')}~{format(addDays(weekStart, 6), 'M/d')}
+                                </span>
+                                {isSelected && <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3} style={{ color: theme.primary }}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                              </div>
+                              <div className="grid grid-cols-7 gap-0.5">
+                                {[1,2,3,4,5,6,0].map(dayOfWeek => {
+                                  const offset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+                                  const date = addDays(weekStart, offset);
+                                  const hasWorkout = workoutModalSelectedDays.has(dayOfWeek);
+                                  return (
+                                    <div key={dayOfWeek} className="text-center">
+                                      <div className="text-[9px] mb-0.5" style={{ color: theme.textMuted }}>{DAY_LABELS[dayOfWeek]}</div>
+                                      <div className="text-[10px] rounded-md py-0.5 font-bold transition-all"
+                                        style={{ background: hasWorkout ? (isSelected ? theme.primary : `${theme.primary}28`) : 'transparent', color: hasWorkout ? (isSelected ? '#fff' : theme.primary) : theme.textMuted }}>
+                                        {format(date, 'd')}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <button onClick={handleRegisterWorkoutSchedule}
+                      disabled={workoutModalSelectedDays.size === 0 || !workoutTargetWeek}
                       className="w-full rounded-2xl py-3 font-semibold disabled:opacity-40"
-                      style={{ background: theme.navActiveBackground, color: theme.navActiveText }}
-                    >
-                      {workoutModalSelectedDays.size}개 운동 일정 등록
+                      style={{ background: theme.navActiveBackground, color: theme.navActiveText }}>
+                      {workoutTargetWeek ? `${workoutModalSelectedDays.size}개 운동 일정 등록` : '주를 먼저 선택하세요'}
                     </button>
                   </div>
                 </motion.div>
@@ -1415,17 +1434,52 @@ export function CalendarTab({ showRepeatModal = false, setShowRepeatModal }: Cal
                 </div>
               </div>
 
-              <p className="mb-4 text-xs" style={{ color: theme.textMuted }}>
-                선택한 요일의 다음 날짜부터 캘린더에 운동 일정이 등록됩니다. 운동 기록 후 해당 일정 메모에 자동 추가됩니다.
-              </p>
+              {/* 캘린더 주 선택 */}
+              <div className="mb-4">
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-widest" style={{ color: theme.textMuted }}>등록할 주 선택</label>
+                <div className="space-y-2 max-h-52 overflow-y-auto pr-0.5">
+                  {Array.from({ length: 5 }, (_, i) => {
+                    const weekStart = addDays(startOfWeek(new Date(), { weekStartsOn: 1 }), i * 7);
+                    const isSelected = workoutTargetWeek !== null && isSameDay(weekStart, workoutTargetWeek);
+                    return (
+                      <button key={i} onClick={() => setWorkoutTargetWeek(weekStart)}
+                        className="w-full rounded-2xl p-3 text-left transition-all"
+                        style={{ border: `2px ${isSelected ? 'solid' : 'dashed'} ${isSelected ? theme.primary : theme.line}`, background: isSelected ? `${theme.primary}10` : 'transparent' }}>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-xs font-bold" style={{ color: isSelected ? theme.primary : theme.textSecondary }}>
+                            {i === 0 ? '이번주' : `${i}주 후`} · {format(weekStart, 'M/d')}~{format(addDays(weekStart, 6), 'M/d')}
+                          </span>
+                          {isSelected && <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3} style={{ color: theme.primary }}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                        </div>
+                        <div className="grid grid-cols-7 gap-0.5">
+                          {[1,2,3,4,5,6,0].map(dayOfWeek => {
+                            const offset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+                            const date = addDays(weekStart, offset);
+                            const hasWorkout = workoutModalSelectedDays.has(dayOfWeek);
+                            return (
+                              <div key={dayOfWeek} className="text-center">
+                                <div className="text-[9px] mb-0.5" style={{ color: theme.textMuted }}>{DAY_LABELS[dayOfWeek]}</div>
+                                <div className="text-[10px] rounded-md py-0.5 font-bold"
+                                  style={{ background: hasWorkout ? (isSelected ? theme.primary : `${theme.primary}28`) : 'transparent', color: hasWorkout ? (isSelected ? '#fff' : theme.primary) : theme.textMuted }}>
+                                  {format(date, 'd')}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
               <button
                 onClick={handleRegisterWorkoutSchedule}
-                disabled={workoutModalSelectedDays.size === 0}
+                disabled={workoutModalSelectedDays.size === 0 || !workoutTargetWeek}
                 className="w-full rounded-2xl py-3 font-semibold disabled:opacity-40"
                 style={{ background: theme.navActiveBackground, color: theme.navActiveText }}
               >
-                {workoutModalSelectedDays.size}개 운동 일정 등록
+                {workoutTargetWeek ? `${workoutModalSelectedDays.size}개 운동 일정 등록` : '주를 먼저 선택하세요'}
               </button>
             </motion.div>
           </>

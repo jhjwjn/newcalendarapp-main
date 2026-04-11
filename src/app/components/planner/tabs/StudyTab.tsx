@@ -273,6 +273,13 @@ export function StudyTab() {
     setStudyHistory(parseStoredObject(HISTORY_STORAGE_KEY, []));
     setProgressMap(parseStoredObject(PROGRESS_STORAGE_KEY, {}));
     setDailySets(parseStoredObject(DAILY_SET_STORAGE_KEY, []));
+    // Restore today's session progress to avoid double-counting on re-mount
+    const saved = parseStoredObject<{ index: number; correct: number; total: number }>(`study_progress_${todayStr}`, { index: 0, correct: 0, total: 0 });
+    if (saved.index > 0) {
+      setCurrentCardIndex(saved.index);
+      setSessionCorrect(saved.correct);
+      setSessionTotal(saved.total);
+    }
   }, []);
 
   useEffect(() => {
@@ -464,27 +471,33 @@ export function StudyTab() {
     setStudyHistory(current => [historyEntry, ...current]);
   };
 
-  const advanceDeck = () => {
+  const advanceDeck = (newTotal: number, newCorrect: number) => {
     setIsFlipped(false);
     if (isLastCard) {
-      recordStudySession(sessionTotal + 1, sessionCorrect);
+      recordStudySession(newTotal, newCorrect);
+      localStorage.removeItem(`study_progress_${todayStr}`);
       setCurrentCardIndex(activeDeck.length);
     } else {
-      setCurrentCardIndex(current => current + 1);
+      const nextIndex = currentCardIndex + 1;
+      setCurrentCardIndex(nextIndex);
+      localStorage.setItem(`study_progress_${todayStr}`, JSON.stringify({ index: nextIndex, correct: newCorrect, total: newTotal }));
     }
   };
 
   const handleCorrect = () => {
     recordAnswer('correct');
-    setSessionCorrect(current => current + 1);
-    setSessionTotal(current => current + 1);
-    advanceDeck();
+    const newCorrect = sessionCorrect + 1;
+    const newTotal = sessionTotal + 1;
+    setSessionCorrect(newCorrect);
+    setSessionTotal(newTotal);
+    advanceDeck(newTotal, newCorrect);
   };
 
   const handleIncorrect = () => {
     recordAnswer('incorrect');
-    setSessionTotal(current => current + 1);
-    advanceDeck();
+    const newTotal = sessionTotal + 1;
+    setSessionTotal(newTotal);
+    advanceDeck(newTotal, sessionCorrect);
   };
 
   const handlePrevious = () => {
@@ -499,6 +512,7 @@ export function StudyTab() {
     setSessionCorrect(0);
     setSessionTotal(0);
     setIsFlipped(false);
+    localStorage.removeItem(`study_progress_${todayStr}`);
   };
 
   const modeTabs = [

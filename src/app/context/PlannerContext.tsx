@@ -121,6 +121,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
     glassAccentDark: 'blue',
     isDarkMode: false,
     groqApiKey: '',
+    geminiApiKey: '',
   });
   const [todayBriefing, setTodayBriefing] = useState('좋은 하루입니다! 오늘도 계획대로 멋지게 시작해봐요. 💪');
   const [studyMode, setStudyMode] = useState<'flashcard' | 'review' | 'opic' | 'writing' | 'history'>('flashcard');
@@ -195,9 +196,28 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
           categoryId: e.category_id, memo: e.memo || '', repeat: e.repeat, repeatDays: e.repeat_days,
           userId: e.user_id, createdAt: e.created_at, updatedAt: e.updated_at,
         }));
-        const finalEvents = cloudEvents.length > 0 ? cloudEvents : SAMPLE_EVENTS;
-        setEvents(finalEvents);
-        localStorage.setItem('planner_events', JSON.stringify(finalEvents));
+        if (cloudEvents.length > 0) {
+          setEvents(cloudEvents);
+          localStorage.setItem('planner_events', JSON.stringify(cloudEvents));
+        } else {
+          // Cloud is empty — upload local events to Supabase instead of wiping them
+          const localRaw = localStorage.getItem('planner_events');
+          const localEvents: CalendarEvent[] = localRaw ? JSON.parse(localRaw) : [];
+          const userEvents = localEvents.filter(e => !e.id.startsWith('evt-'));
+          if (userEvents.length > 0) {
+            await Promise.all(userEvents.map(event =>
+              supabase.from('events').upsert({
+                id: event.id, user_id: userId, title: event.title, date: event.date,
+                start_time: event.startTime, end_time: event.endTime,
+                category_id: event.categoryId || null, memo: event.memo || '',
+                repeat: event.repeat || null, repeat_days: event.repeatDays || null,
+              })
+            ));
+            const uploaded = userEvents.map(e => ({ ...e, userId }));
+            setEvents(uploaded);
+            localStorage.setItem('planner_events', JSON.stringify(uploaded));
+          }
+        }
       }
 
       if (notesRes.data) {
@@ -205,9 +225,10 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
           id: n.id, title: n.title, content: n.content, pinned: n.pinned,
           userId: n.user_id, createdAt: n.created_at, updatedAt: n.updated_at,
         }));
-        const finalNotes = cloudNotes.length > 0 ? cloudNotes : SAMPLE_NOTES;
-        setNotes(finalNotes);
-        localStorage.setItem('planner_notes', JSON.stringify(finalNotes));
+        if (cloudNotes.length > 0) {
+          setNotes(cloudNotes);
+          localStorage.setItem('planner_notes', JSON.stringify(cloudNotes));
+        }
       }
 
       if (categoriesRes.data && categoriesRes.data.length > 0) {
