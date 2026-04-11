@@ -88,7 +88,8 @@ export function StudyTab() {
   const [idiomTotal, setIdiomTotal] = useState(0);
   const [idiomDirection, setIdiomDirection] = useState<'left' | 'right'>('right');
   const prevIdiomIndexRef = useRef(0);
-  
+  const [expandedWritingId, setExpandedWritingId] = useState<string | null>(null);
+
   const [writingPrompts, setWritingPrompts] = useState<string[]>([]);
   const [currentPromptIndex, setCurrentPromptIndex] = useState(0);
   const [writingCount, setWritingCount] = useState(0);
@@ -901,7 +902,6 @@ export function StudyTab() {
   };
 
   const renderHistoryMode = () => {
-    const [expandedWritingId, setExpandedWritingId] = useState<string | null>(null);
     return (
       <div
         className="rounded-[22px] border p-4"

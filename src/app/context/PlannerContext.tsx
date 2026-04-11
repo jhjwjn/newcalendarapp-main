@@ -124,7 +124,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
     geminiApiKey: '',
   });
   const [todayBriefing, setTodayBriefing] = useState('좋은 하루입니다! 오늘도 계획대로 멋지게 시작해봐요. 💪');
-  const [studyMode, setStudyMode] = useState<'flashcard' | 'review' | 'opic' | 'writing' | 'history' | 'idiom'>('flashcard');
+  const [studyMode, setStudyMode] = useState<'flashcard' | 'review' | 'opic' | 'writing' | 'history' | 'idiom'>('idiom');
   const [isInitialized, setIsInitialized] = useState(false);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
