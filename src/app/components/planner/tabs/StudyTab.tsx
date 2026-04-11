@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { AnimatePresence, motion } from 'motion/react';
@@ -47,7 +47,7 @@ function parseMeanings(raw: string): string[] {
 }
 
 type StudyMode = 'idiom' | 'opic' | 'writing' | 'history';
-type HistoryFilter = 'all' | 'correct' | 'incorrect';
+type HistoryFilter = 'all' | 'idiom' | 'writing';
 
 const HISTORY_STORAGE_KEY = 'planner_study_history';
 
@@ -86,6 +86,8 @@ export function StudyTab() {
   const [idiomFlipped, setIdiomFlipped] = useState(false);
   const [idiomCorrect, setIdiomCorrect] = useState(0);
   const [idiomTotal, setIdiomTotal] = useState(0);
+  const [idiomDirection, setIdiomDirection] = useState<'left' | 'right'>('right');
+  const prevIdiomIndexRef = useRef(0);
   
   const [writingPrompts, setWritingPrompts] = useState<string[]>([]);
   const [currentPromptIndex, setCurrentPromptIndex] = useState(0);
@@ -255,6 +257,20 @@ export function StudyTab() {
     }
   };
   
+  const addIdiomHistory = (idiom: IdiomEntry, correct: boolean) => {
+    const entry: StudyHistoryEntry = {
+      id: `${Date.now()}-${Math.random()}`,
+      date: todayStr,
+      reviewedAt: new Date().toISOString(),
+      type: 'idiom',
+      cardId: idiom.expression,
+      front: idiom.expression,
+      back: `${parseMeanings(idiom.meaning_en).slice(0, 2).join(' / ')} · ${parseMeanings(idiom.meaning_ko).slice(0, 2).join(' / ')}`,
+      result: correct ? 'correct' : 'incorrect',
+    };
+    setStudyHistory(prev => [entry, ...prev]);
+  };
+
   const requestWritingFeedback = async () => {
     if (!settings.geminiApiKey) {
       setWritingFeedback('피드백을 생성하려면 설정에서 Gemini API 키를 입력해주세요.');
@@ -266,13 +282,17 @@ export function StudyTab() {
       return;
     }
 
+    const capturedPrompt = writingPrompts[currentPromptIndex] || '';
+    const capturedAnswer = writingInput;
+
     setIsGeneratingFeedback(true);
+    let feedbackResult = '';
     try {
       const messages = [
         createGeminiMessage('system', 'You are an expert English writing coach for OPIC exam preparation. Provide detailed, accurate feedback in Korean. Never mix Chinese characters into Korean output.'),
         createGeminiMessage('user', `다음 영어 문장에 대해 OPIC 준비용 피드백을 한국어로 제공해주세요.
 
-사용자 문장: ${writingInput}
+사용자 문장: ${capturedAnswer}
 
 피드백 형식:
 1. 문법 교정 (있을 경우)
@@ -282,7 +302,20 @@ export function StudyTab() {
       ];
 
       const response = await callGeminiAI(settings.geminiApiKey, messages, 600);
+      feedbackResult = response;
       setWritingFeedback(response);
+
+      // Save to history
+      const entry: StudyHistoryEntry = {
+        id: `${Date.now()}-${Math.random()}`,
+        date: todayStr,
+        reviewedAt: new Date().toISOString(),
+        type: 'writing',
+        prompt: capturedPrompt,
+        answer: capturedAnswer,
+        feedback: response,
+      };
+      setStudyHistory(prev => [entry, ...prev]);
     } catch (error) {
       console.error('Writing feedback error:', error);
       setWritingFeedback('피드백을 생성하는 중 오류가 발생했습니다.');
@@ -322,7 +355,7 @@ export function StudyTab() {
     if (!expandedHistoryDay) return [];
     const entries = groupedHistory[expandedHistoryDay] || [];
     if (historyFilter === 'all') return entries;
-    return entries.filter(entry => entry.result === historyFilter);
+    return entries.filter(entry => entry.type === historyFilter);
   }, [expandedHistoryDay, groupedHistory, historyFilter]);
 
   useEffect(() => {
@@ -338,10 +371,31 @@ export function StudyTab() {
 
   const modeTabs = [
     { id: 'idiom' as const, label: '영어 표현', icon: MessageSquare },
-    { id: 'opic' as const, label: 'OPIC 단어', icon: Sparkles },
+    { id: 'opic' as const, label: 'OPIC 표현', icon: Sparkles },
     { id: 'writing' as const, label: '쓰기 연습', icon: PenSquare },
     { id: 'history' as const, label: 'DAY 기록', icon: History },
   ];
+
+  const goIdiomNext = (correct: boolean | null) => {
+    const currentIdiom = idiomDeck[idiomIndex];
+    if (currentIdiom && correct !== null) {
+      addIdiomHistory(currentIdiom, correct);
+      if (correct) setIdiomCorrect(c => c + 1);
+      setIdiomTotal(t => t + 1);
+    }
+    prevIdiomIndexRef.current = idiomIndex;
+    setIdiomDirection('right');
+    setIdiomIndex(i => i + 1);
+    setIdiomFlipped(false);
+  };
+
+  const goIdiomPrev = () => {
+    if (idiomIndex === 0) return;
+    prevIdiomIndexRef.current = idiomIndex;
+    setIdiomDirection('left');
+    setIdiomIndex(i => i - 1);
+    setIdiomFlipped(false);
+  };
 
   const renderIdiomMode = () => {
     const currentIdiom = idiomDeck[idiomIndex];
@@ -367,11 +421,16 @@ export function StudyTab() {
 
     const enMeanings = parseMeanings(currentIdiom.meaning_en);
     const koMeanings = parseMeanings(currentIdiom.meaning_ko);
-    // 너무 많으면 2개까지만 표시
     const showEn = enMeanings.slice(0, 2);
     const showKo = koMeanings.slice(0, 2);
     const extraEn = enMeanings.length > 2 ? enMeanings.length - 2 : 0;
     const extraKo = koMeanings.length > 2 ? koMeanings.length - 2 : 0;
+
+    const slideVariants = {
+      enter: (dir: 'left' | 'right') => ({ x: dir === 'right' ? 60 : -60, opacity: 0 }),
+      center: { x: 0, opacity: 1 },
+      exit: (dir: 'left' | 'right') => ({ x: dir === 'right' ? -60 : 60, opacity: 0 }),
+    };
 
     return (
       <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_196px]">
@@ -382,55 +441,103 @@ export function StudyTab() {
             <span>정답 {idiomCorrect} / {idiomTotal}</span>
           </div>
 
-          <div onClick={() => setIdiomFlipped(f => !f)} className="relative h-[200px] cursor-pointer perspective-1000 md:h-[300px]">
-            <div className={`absolute inset-0 h-full w-full transition-transform duration-500 transform-style-3d ${idiomFlipped ? 'rotate-y-180' : ''}`}>
-              {/* 앞면: 표현 */}
-              <div className="absolute inset-0 flex h-full w-full flex-col items-center justify-center rounded-[24px] px-5 text-white backface-hidden"
-                style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.secondary})`, boxShadow: `0 24px 60px ${theme.primary}30` }}>
-                <RotateCcw className="mb-3 h-5 w-5 opacity-60" />
-                <h2 className="mb-2 text-center text-xl font-bold leading-snug md:text-2xl">{currentIdiom.expression}</h2>
-                <p className="text-xs opacity-70">탭하여 뜻 보기</p>
-              </div>
-
-              {/* 뒷면: 의미 */}
-              <div className="absolute inset-0 flex h-full w-full flex-col items-center justify-center rounded-[24px] px-5 text-white backface-hidden rotate-y-180 overflow-hidden"
-                style={{ background: `linear-gradient(135deg, ${theme.accent1}, ${theme.secondary})`, boxShadow: `0 24px 60px ${theme.accent1}30` }}>
-                <div className="w-full space-y-3 text-center">
-                  <div>
-                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest opacity-60">English</p>
-                    {showEn.map((m, i) => <p key={i} className="text-sm font-medium leading-5">{m}</p>)}
-                    {extraEn > 0 && <p className="text-xs opacity-60">외 {extraEn}개</p>}
+          {/* Card with slide on index change + flip on tap */}
+          <div className="overflow-hidden rounded-[24px]">
+            <AnimatePresence mode="popLayout" custom={idiomDirection}>
+              <motion.div
+                key={idiomIndex}
+                custom={idiomDirection}
+                variants={slideVariants}
+                initial="enter"
+                animate="center"
+                exit="exit"
+                transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                onClick={() => setIdiomFlipped(f => !f)}
+                className="relative h-[220px] cursor-pointer md:h-[300px]"
+                style={{ perspective: '1000px' }}
+              >
+                <div
+                  style={{
+                    position: 'absolute', inset: 0, width: '100%', height: '100%',
+                    transformStyle: 'preserve-3d',
+                    transform: idiomFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+                    transition: 'transform 0.55s cubic-bezier(0.22,1,0.36,1)',
+                  }}
+                >
+                  {/* Front */}
+                  <div
+                    style={{
+                      position: 'absolute', inset: 0, backfaceVisibility: 'hidden',
+                      background: `linear-gradient(135deg, ${theme.primary}, ${theme.secondary})`,
+                      boxShadow: `0 20px 50px ${theme.primary}30`,
+                      borderRadius: 24, display: 'flex', flexDirection: 'column',
+                      alignItems: 'center', justifyContent: 'center',
+                      padding: '0 20px', color: '#fff',
+                    }}
+                  >
+                    <RotateCcw className="mb-3 h-5 w-5 opacity-60" />
+                    <h2 className="mb-2 text-center text-xl font-bold leading-snug md:text-2xl">{currentIdiom.expression}</h2>
+                    <p className="text-xs opacity-70">탭하여 뜻 보기</p>
                   </div>
-                  <div className="border-t border-white/20 pt-3">
-                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest opacity-60">Korean</p>
-                    {showKo.map((m, i) => <p key={i} className="text-sm font-medium leading-5">{m}</p>)}
-                    {extraKo > 0 && <p className="text-xs opacity-60">외 {extraKo}개</p>}
+                  {/* Back */}
+                  <div
+                    style={{
+                      position: 'absolute', inset: 0, backfaceVisibility: 'hidden',
+                      transform: 'rotateY(180deg)',
+                      background: `linear-gradient(135deg, ${theme.accent1 ?? '#7c3aed'}, ${theme.secondary})`,
+                      boxShadow: `0 20px 50px ${(theme.accent1 ?? '#7c3aed')}30`,
+                      borderRadius: 24, display: 'flex', flexDirection: 'column',
+                      alignItems: 'center', justifyContent: 'center',
+                      padding: '0 20px', color: '#fff', overflow: 'hidden',
+                    }}
+                  >
+                    <div className="w-full space-y-3 text-center">
+                      <div>
+                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest opacity-60">English</p>
+                        {showEn.map((m, i) => <p key={i} className="text-sm font-medium leading-5">{m}</p>)}
+                        {extraEn > 0 && <p className="text-xs opacity-60">외 {extraEn}개</p>}
+                      </div>
+                      <div className="border-t border-white/20 pt-3">
+                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest opacity-60">Korean</p>
+                        {showKo.map((m, i) => <p key={i} className="text-sm font-medium leading-5">{m}</p>)}
+                        {extraKo > 0 && <p className="text-xs opacity-60">외 {extraKo}개</p>}
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </div>
+              </motion.div>
+            </AnimatePresence>
           </div>
 
           <div className="mt-4 flex items-center justify-between">
-            <button onClick={() => { if (idiomIndex > 0) { setIdiomIndex(i => i - 1); setIdiomFlipped(false); } }}
-              disabled={idiomIndex === 0}
+            <button onClick={goIdiomPrev} disabled={idiomIndex === 0}
               className="rounded-full p-3 transition-colors disabled:opacity-30"
               style={{ background: theme.navBackground, color: theme.textSecondary }}>
               <ArrowLeft className="h-5 w-5" />
             </button>
             <div className="flex gap-2.5">
-              <button onClick={() => { setIdiomTotal(t => t + 1); setIdiomIndex(i => i + 1); setIdiomFlipped(false); }}
-                className="flex items-center gap-2 rounded-2xl px-3.5 py-2 text-sm font-semibold"
-                style={{ background: `${theme.accent1}18`, color: theme.accent1 }}>
+              <button
+                onClick={() => goIdiomNext(false)}
+                className="flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-bold transition-all active:scale-95"
+                style={{
+                  background: `linear-gradient(135deg, #FF4D4D22, #FF4D4D14)`,
+                  color: '#FF4040',
+                  border: '1.5px solid #FF404055',
+                }}>
                 <XCircle className="h-5 w-5" />모름
               </button>
-              <button onClick={() => { setIdiomCorrect(c => c + 1); setIdiomTotal(t => t + 1); setIdiomIndex(i => i + 1); setIdiomFlipped(false); }}
-                className="flex items-center gap-2 rounded-2xl px-3.5 py-2 text-sm font-semibold"
-                style={{ background: `${theme.tertiary}18`, color: theme.tertiary }}>
+              <button
+                onClick={() => goIdiomNext(true)}
+                className="flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-bold transition-all active:scale-95"
+                style={{
+                  background: `linear-gradient(135deg, #10B98122, #10B98114)`,
+                  color: '#059669',
+                  border: '1.5px solid #05966955',
+                }}>
                 <CheckCircle2 className="h-5 w-5" />알아요
               </button>
             </div>
-            <button onClick={() => { setIdiomIndex(i => i + 1); setIdiomFlipped(false); }}
+            <button onClick={() => goIdiomNext(null)}
               className="rounded-full p-3" style={{ background: theme.navBackground, color: theme.textSecondary }}>
               <ArrowRight className="h-5 w-5" />
             </button>
@@ -477,16 +584,16 @@ export function StudyTab() {
           }}
         >
           <h3 className="mb-4 text-xl font-semibold" style={{ color: theme.text }}>
-            OPIC 단어 학습
+            OPIC 표현 학습
           </h3>
           <p className="mb-4 text-sm" style={{ color: theme.textSecondary }}>
-            매일 IH 이상 수준의 새로운 영어 단어 20개를 학습합니다.
+            매일 IH 이상 수준의 새로운 영어 표현 20개를 학습합니다. 카드를 탭해 뜻을 확인하세요.
           </p>
-          <div className="mb-4 rounded-2xl border p-4" style={{ background: theme.navBackground, borderColor: theme.line }}>
+          <div className="mb-6 rounded-2xl border p-4" style={{ background: theme.navBackground, borderColor: theme.line }}>
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
                 <div className="text-2xl font-bold" style={{ color: theme.text }}>{opicStats.totalWords}</div>
-                <div className="text-xs" style={{ color: theme.textMuted }}>총 단어</div>
+                <div className="text-xs" style={{ color: theme.textMuted }}>총 표현</div>
               </div>
               <div>
                 <div className="text-2xl font-bold" style={{ color: theme.text }}>{opicStats.learnedToday}</div>
@@ -499,11 +606,11 @@ export function StudyTab() {
             </div>
           </div>
           <button
-            onClick={loadOpicWords}
-            className="rounded-2xl px-6 py-3 font-semibold"
-            style={{ background: theme.navActiveBackground, color: theme.navActiveText }}
+            onClick={() => setMode('idiom')}
+            className="w-full rounded-2xl px-6 py-3.5 font-bold text-white"
+            style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.secondary})` }}
           >
-            오늘의 단어 시작하기
+            표현 학습 시작 →
           </button>
         </div>
       );
@@ -619,19 +726,17 @@ export function StudyTab() {
             <div className="flex gap-2.5">
               <button
                 onClick={handleOpicIncorrect}
-                className="flex items-center gap-2 rounded-2xl px-3.5 py-2 text-sm font-semibold"
-                style={{ background: `${theme.accent1}18`, color: theme.accent1 }}
+                className="flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-bold transition-all active:scale-95"
+                style={{ background: 'linear-gradient(135deg,#FF4D4D22,#FF4D4D14)', color: '#FF4040', border: '1.5px solid #FF404055' }}
               >
-                <XCircle className="h-5 w-5" />
-                모름
+                <XCircle className="h-5 w-5" />모름
               </button>
               <button
                 onClick={handleOpicCorrect}
-                className="flex items-center gap-2 rounded-2xl px-3.5 py-2 text-sm font-semibold"
-                style={{ background: `${theme.tertiary}18`, color: theme.tertiary }}
+                className="flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-bold transition-all active:scale-95"
+                style={{ background: 'linear-gradient(135deg,#10B98122,#10B98114)', color: '#059669', border: '1.5px solid #05966955' }}
               >
-                <CheckCircle2 className="h-5 w-5" />
-                알겠음
+                <CheckCircle2 className="h-5 w-5" />알겠음
               </button>
             </div>
 
@@ -796,59 +901,55 @@ export function StudyTab() {
   };
 
   const renderHistoryMode = () => {
+    const [expandedWritingId, setExpandedWritingId] = useState<string | null>(null);
     return (
       <div
         className="rounded-[22px] border p-4"
-        style={{
-          background: theme.panelBackground,
-          borderColor: theme.panelBorder,
-          boxShadow: theme.panelShadow,
-        }}
+        style={{ background: theme.panelBackground, borderColor: theme.panelBorder, boxShadow: theme.panelShadow }}
       >
         <div className="mb-5">
           <div className="text-xs font-semibold uppercase tracking-[0.24em]" style={{ color: theme.textMuted }}>
-            Review Log
+            Study Log
           </div>
-          <h3 className="mt-1 text-lg font-semibold" style={{ color: theme.text }}>
-            날짜별 풀이 기록
-          </h3>
+          <h3 className="mt-1 text-lg font-semibold" style={{ color: theme.text }}>날짜별 학습 기록</h3>
         </div>
 
         {historyDays.length === 0 ? (
           <div className="rounded-2xl border px-4 py-12 text-center text-sm" style={{ background: theme.navBackground, borderColor: theme.line, color: theme.textMuted }}>
-            아직 풀이 기록이 없습니다.
+            아직 학습 기록이 없습니다.
           </div>
         ) : (
           <div className="grid gap-4 xl:grid-cols-[210px_minmax(0,1fr)]">
+            {/* 날짜 목록 */}
             <div className="space-y-2">
               {historyDays.map((date, index) => {
                 const active = expandedHistoryDay === date;
+                const dayEntries = groupedHistory[date] || [];
+                const idiomCount = dayEntries.filter(e => e.type === 'idiom').length;
+                const writingCount = dayEntries.filter(e => e.type === 'writing').length;
                 return (
                   <button
                     key={date}
                     onClick={() => setExpandedHistoryDay(date)}
-                    className="flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left"
-                    style={{
-                      background: active ? theme.panelBackgroundStrong : theme.navBackground,
-                      borderColor: active ? theme.primary : theme.line,
-                    }}
+                    className="flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left transition-all"
+                    style={{ background: active ? theme.panelBackgroundStrong : theme.navBackground, borderColor: active ? theme.primary : theme.line }}
                   >
                     <div>
                       <div className="text-sm font-semibold" style={{ color: theme.text }}>
-                        Day {index + 1}
+                        {format(new Date(date), 'M/d (E)', { locale: ko })}
                       </div>
-                      <div className="text-xs" style={{ color: theme.textMuted }}>
-                        {format(new Date(date), 'M월 d일', { locale: ko })}
+                      <div className="mt-0.5 flex gap-2 text-xs" style={{ color: theme.textMuted }}>
+                        {idiomCount > 0 && <span>표현 {idiomCount}</span>}
+                        {writingCount > 0 && <span>작문 {writingCount}</span>}
                       </div>
                     </div>
-                    <div className="text-xs" style={{ color: theme.textMuted }}>
-                      {groupedHistory[date].length}문제
-                    </div>
+                    <div className="text-xs" style={{ color: theme.textMuted }}>{dayEntries.length}개</div>
                   </button>
                 );
               })}
             </div>
 
+            {/* 상세 보기 */}
             <div className="rounded-2xl border p-4" style={{ background: theme.navBackground, borderColor: theme.line }}>
               {expandedHistoryDay ? (
                 <>
@@ -856,67 +957,94 @@ export function StudyTab() {
                     <div className="text-sm font-semibold" style={{ color: theme.text }}>
                       {format(new Date(expandedHistoryDay), 'M월 d일 (E)', { locale: ko })}
                     </div>
-                    <div className="flex items-center gap-2">
-                      <div className="text-xs" style={{ color: theme.textMuted }}>
-                        {activeHistoryEntries.length}문제
-                      </div>
-                      <div className="flex rounded-2xl border p-1" style={{ background: theme.panelBackgroundStrong, borderColor: theme.line }}>
-                        {[
-                          { id: 'all' as const, label: '전체' },
-                          { id: 'correct' as const, label: '정답' },
-                          { id: 'incorrect' as const, label: '오답' },
-                        ].map(filter => {
-                          const active = historyFilter === filter.id;
-                          return (
-                            <button
-                              key={filter.id}
-                              onClick={() => setHistoryFilter(filter.id)}
-                              className="rounded-xl px-3 py-1.5 text-xs font-semibold"
-                              style={{
-                                background: active ? theme.navActiveBackground : 'transparent',
-                                color: active ? theme.navActiveText : theme.textMuted,
-                              }}
-                            >
-                              {filter.label}
-                            </button>
-                          );
-                        })}
-                      </div>
+                    <div className="flex rounded-2xl border p-1" style={{ background: theme.panelBackgroundStrong, borderColor: theme.line }}>
+                      {[
+                        { id: 'all' as const, label: '전체' },
+                        { id: 'idiom' as const, label: '표현' },
+                        { id: 'writing' as const, label: '작문' },
+                      ].map(filter => {
+                        const isActive = historyFilter === filter.id;
+                        return (
+                          <button
+                            key={filter.id}
+                            onClick={() => setHistoryFilter(filter.id)}
+                            className="rounded-xl px-3 py-1.5 text-xs font-semibold"
+                            style={{ background: isActive ? theme.navActiveBackground : 'transparent', color: isActive ? theme.navActiveText : theme.textMuted }}
+                          >
+                            {filter.label}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
                     {activeHistoryEntries.length === 0 ? (
                       <div className="rounded-2xl border px-4 py-10 text-center text-sm" style={{ background: theme.panelBackgroundStrong, borderColor: theme.line, color: theme.textMuted }}>
                         선택한 조건의 기록이 없습니다.
                       </div>
                     ) : (
-                      activeHistoryEntries.map(entry => (
-                        <div
-                          key={entry.id}
-                          className="flex items-start justify-between rounded-2xl px-3 py-3"
-                          style={{ background: entry.result === 'correct' ? `${theme.tertiary}12` : `${theme.accent1}12` }}
-                        >
-                          <div className="min-w-0">
-                            <div className="text-sm font-semibold" style={{ color: theme.text }}>
-                              {entry.front}
+                      activeHistoryEntries.map(entry => {
+                        if (entry.type === 'writing') {
+                          const isExpanded = expandedWritingId === entry.id;
+                          return (
+                            <div key={entry.id} className="rounded-2xl border overflow-hidden" style={{ borderColor: `${theme.primary}30` }}>
+                              {/* 작문 헤더 */}
+                              <div
+                                className="flex items-start justify-between px-3 py-2.5 cursor-pointer"
+                                style={{ background: `${theme.primary}10` }}
+                                onClick={() => setExpandedWritingId(isExpanded ? null : entry.id)}
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-1.5 mb-1">
+                                    <span className="text-[10px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-full" style={{ background: `${theme.primary}25`, color: theme.primary }}>작문</span>
+                                  </div>
+                                  <p className="text-xs font-medium line-clamp-2" style={{ color: theme.text }}>{entry.prompt}</p>
+                                </div>
+                                <span className="ml-2 shrink-0 text-xs" style={{ color: theme.textMuted }}>{isExpanded ? '▲' : '▼'}</span>
+                              </div>
+                              {isExpanded && (
+                                <div className="px-3 pb-3 pt-2 space-y-2.5">
+                                  <div>
+                                    <p className="text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: theme.textMuted }}>내 답변</p>
+                                    <p className="text-sm leading-6 rounded-xl px-3 py-2" style={{ background: theme.panelBackground, color: theme.text }}>{entry.answer}</p>
+                                  </div>
+                                  {entry.feedback && (
+                                    <div>
+                                      <p className="text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: theme.textMuted }}>AI 피드백</p>
+                                      <p className="whitespace-pre-wrap text-xs leading-6 rounded-xl px-3 py-2" style={{ background: theme.panelBackground, color: theme.textSecondary }}>{entry.feedback}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
-                            <div className="mt-1 text-xs" style={{ color: theme.textSecondary }}>
-                              {entry.back}
+                          );
+                        }
+                        // idiom entry
+                        return (
+                          <div
+                            key={entry.id}
+                            className="flex items-start justify-between rounded-2xl px-3 py-2.5"
+                            style={{ background: entry.result === 'correct' ? '#10B98112' : '#FF404012' }}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 mb-0.5">
+                                <span className="text-[10px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-full" style={{ background: entry.result === 'correct' ? '#10B98120' : '#FF404020', color: entry.result === 'correct' ? '#059669' : '#FF4040' }}>표현</span>
+                              </div>
+                              <div className="text-sm font-semibold" style={{ color: theme.text }}>{entry.front}</div>
+                              <div className="mt-0.5 text-xs" style={{ color: theme.textSecondary }}>{entry.back}</div>
+                            </div>
+                            <div className="ml-2 shrink-0 text-xs font-bold" style={{ color: entry.result === 'correct' ? '#059669' : '#FF4040' }}>
+                              {entry.result === 'correct' ? '알아요' : '모름'}
                             </div>
                           </div>
-                          <div className="text-xs font-semibold" style={{ color: entry.result === 'correct' ? theme.tertiary : theme.accent1 }}>
-                            {entry.result === 'correct' ? '정답' : '오답'}
-                          </div>
-                        </div>
-                      ))
+                        );
+                      })
                     )}
                   </div>
                 </>
               ) : (
-                <div className="py-12 text-center text-sm" style={{ color: theme.textMuted }}>
-                  기록을 선택해주세요.
-                </div>
+                <div className="py-12 text-center text-sm" style={{ color: theme.textMuted }}>기록을 선택해주세요.</div>
               )}
             </div>
           </div>
@@ -950,10 +1078,10 @@ export function StudyTab() {
         })}
       </div>
 
-      <div className="flex min-h-[calc(100vh-14rem)] flex-col gap-2 md:grid md:grid-cols-[180px_minmax(0,1fr)] md:gap-4">
-        <div className="hidden md:block">
+      <div className="flex min-h-[calc(100vh-10rem)] flex-col gap-2 md:grid md:grid-cols-[190px_minmax(0,1fr)] md:gap-4">
+        <div className="hidden md:flex md:flex-col">
           <aside
-            className="rounded-xl md:rounded-[22px] border p-2 md:p-2.5"
+            className="flex flex-1 flex-col rounded-xl md:rounded-[22px] border p-2.5 md:p-3"
             style={{
               background: theme.panelBackground,
               borderColor: theme.panelBorder,
@@ -963,7 +1091,7 @@ export function StudyTab() {
             <div className="mb-3 text-xs font-semibold uppercase tracking-[0.24em]" style={{ color: theme.textMuted }}>
               Study Mode
             </div>
-            <div className="space-y-2">
+            <div className="flex flex-1 flex-col gap-1.5">
               {modeTabs.map(tab => {
                 const Icon = tab.icon;
                 const active = mode === tab.id;
@@ -971,7 +1099,7 @@ export function StudyTab() {
                   <button
                     key={tab.id}
                     onClick={() => setMode(tab.id)}
-                    className="flex w-full items-center gap-2 rounded-2xl px-3 py-2.5 text-sm font-medium whitespace-nowrap"
+                    className="flex flex-1 items-center gap-2.5 rounded-2xl px-3.5 py-3.5 text-sm font-medium whitespace-nowrap transition-all"
                     style={{
                       background: active ? theme.panelBackgroundStrong : 'transparent',
                       color: active ? theme.text : theme.textMuted,
@@ -985,9 +1113,7 @@ export function StudyTab() {
             </div>
 
             <div className="mt-4 space-y-2 rounded-2xl border p-3" style={{ background: theme.navBackground, borderColor: theme.line }}>
-              <div className="text-xs" style={{ color: theme.textMuted }}>
-                오늘 표현
-              </div>
+              <div className="text-xs" style={{ color: theme.textMuted }}>오늘 표현</div>
               <div className="text-sm font-semibold" style={{ color: theme.text }}>
                 {idiomTotal > 0 ? `${idiomTotal}개 학습` : '미시작'}
               </div>

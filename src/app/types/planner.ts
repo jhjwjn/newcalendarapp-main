@@ -83,12 +83,19 @@ export interface StudyHistoryEntry {
   id: string;
   date: string;
   reviewedAt: string;
-  cardId: string;
-  front: string;
-  back: string;
-  example: string;
-  result: 'correct' | 'incorrect';
-  mode: 'daily' | 'review';
+  type: 'idiom' | 'writing';
+  // idiom fields
+  cardId?: string;
+  front?: string;
+  back?: string;
+  result?: 'correct' | 'incorrect';
+  // writing fields
+  prompt?: string;
+  answer?: string;
+  feedback?: string;
+  // legacy
+  example?: string;
+  mode?: 'daily' | 'review';
 }
 
 // 습관 추적

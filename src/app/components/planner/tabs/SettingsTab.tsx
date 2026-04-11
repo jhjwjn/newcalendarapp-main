@@ -38,7 +38,36 @@ const ACCENT_OPTIONS: { id: 'blue' | 'purple' | 'peach' | 'black'; name: string 
   { id: 'black', name: 'Mono' },
 ];
 
-const PRESET_COLORS = ['#3b82f6','#10b981','#ef4444','#f59e0b','#8b5cf6','#ec4899','#14b8a6','#f97316','#6366f1','#84cc16'];
+const COLOR_PALETTES = [
+  {
+    id: 'pastel', name: '파스텔', emoji: '🎀',
+    colors: ['#F28B82','#FBBC04','#FFF475','#CCFF90','#A8DAB5','#CBF0F8','#AECBFA','#D7AEFB','#FDCFE8','#E6C9A8','#FF8A80','#FFD180','#69F0AE','#40C4FF','#FFB3C1'],
+  },
+  {
+    id: 'wood', name: '우드', emoji: '🪵',
+    colors: ['#C4924A','#D4A574','#E8C9A0','#B87333','#8B6914','#A0522D','#CD853F','#D2B48C','#DEB887','#F4A460','#BC9A6C','#8B7355','#9E7956','#C9956C','#E5C999'],
+  },
+  {
+    id: 'ocean', name: '오션', emoji: '🌊',
+    colors: ['#0077B6','#0096C7','#00B4D8','#48CAE4','#90E0EF','#023E8A','#0466C8','#4CC9F0','#4895EF','#4361EE','#3F37C9','#480CA8','#7B2FBE','#9D4EDD','#C77DFF'],
+  },
+  {
+    id: 'forest', name: '포레스트', emoji: '🌿',
+    colors: ['#1B4332','#2D6A4F','#40916C','#52B788','#74C69D','#95D5B2','#B7E4C7','#588157','#6A994E','#A7C957','#386641','#4F772D','#90A955','#DAD7CD','#A3B18A'],
+  },
+  {
+    id: 'sunset', name: '선셋', emoji: '🌅',
+    colors: ['#EF476F','#F79489','#F4A261','#E76F51','#E9C46A','#EE9B00','#CA6702','#BB3E03','#AE2012','#FF6B6B','#FFA07A','#FFD700','#FF8C00','#DC143C','#FF4500'],
+  },
+  {
+    id: 'lavender', name: '라벤더', emoji: '💜',
+    colors: ['#7B2D8B','#9B4DCA','#B57BEE','#C89FF5','#E0C3FC','#8338EC','#3A86FF','#F72585','#B5179E','#7209B7','#560BAD','#480CA8','#3A0CA3','#FF006E','#FFBE0B'],
+  },
+  {
+    id: 'mono', name: '모노', emoji: '🖤',
+    colors: ['#212121','#424242','#616161','#757575','#9E9E9E','#BDBDBD','#E0E0E0','#1A237E','#283593','#303F9F','#3949AB','#5C6BC0','#7986CB','#546E7A','#37474F'],
+  },
+];
 const PRESET_EMOJIS = ['💼','🌟','💪','📚','📝','🎯','🏃','🍎','✈️','🎵','💡','🏠','🛒','💰','🎮'];
 
 const AI_PROVIDERS = [
@@ -65,10 +94,12 @@ export function SettingsTab() {
   const [editingCatName, setEditingCatName] = useState('');
   const [editingCatColor, setEditingCatColor] = useState('#3b82f6');
   const [editingCatEmoji, setEditingCatEmoji] = useState('🏷️');
+  const [editingPaletteId, setEditingPaletteId] = useState('pastel');
   const [isAddingCat, setIsAddingCat] = useState(false);
   const [newCatName, setNewCatName] = useState('');
   const [newCatColor, setNewCatColor] = useState('#3b82f6');
   const [newCatEmoji, setNewCatEmoji] = useState('🏷️');
+  const [newPaletteId, setNewPaletteId] = useState('pastel');
 
   // 파트너 연결 상태
   const [partnerConn, setPartnerConn] = useState<PartnerConnection | null>(null);
@@ -177,6 +208,9 @@ export function SettingsTab() {
     setEditingCatName(cat.name);
     setEditingCatColor(cat.color);
     setEditingCatEmoji(cat.emoji);
+    // Find which palette contains this color
+    const matchPalette = COLOR_PALETTES.find(p => p.colors.includes(cat.color));
+    setEditingPaletteId(matchPalette?.id ?? 'pastel');
   };
 
   const handleSaveEdit = async () => {
@@ -416,117 +450,234 @@ export function SettingsTab() {
         </div>
       </div>
 
-      {/* 라벨(카테고리) 관리 — 전체 너비 */}
+      {/* 라벨(카테고리) 관리 */}
       <div className="rounded-2xl border p-4 md:p-5" style={{ background: theme.panelBackground, borderColor: theme.panelBorder }}>
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-2">
             <Tag className="h-4 w-4" style={{ color: theme.primary }} />
             <h2 className="text-xs font-semibold uppercase tracking-widest" style={{ color: theme.textMuted }}>라벨 설정</h2>
           </div>
-          <button onClick={() => setIsAddingCat(v => !v)}
-            className="flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs font-semibold border transition-all"
-            style={{ borderColor: isAddingCat ? theme.primary : theme.line, color: isAddingCat ? theme.primary : theme.textSecondary }}>
-            <Plus className="h-3 w-3" /> 추가
+          <button
+            onClick={() => { setIsAddingCat(v => !v); setEditingCatId(null); }}
+            className="flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition-all"
+            style={{
+              background: isAddingCat ? `linear-gradient(135deg, ${theme.primary}, ${theme.secondary})` : theme.navBackground,
+              color: isAddingCat ? '#fff' : theme.textSecondary,
+              border: `1px solid ${isAddingCat ? 'transparent' : theme.line}`,
+            }}>
+            <Plus className="h-3 w-3" /> {isAddingCat ? '닫기' : '라벨 추가'}
           </button>
         </div>
 
-        {/* 새 카테고리 추가 폼 */}
+        {/* 새 라벨 추가 패널 */}
         <AnimatePresence>
           {isAddingCat && (
-            <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
-              className="mb-4 rounded-2xl border p-3 space-y-3"
-              style={{ background: theme.navBackground, borderColor: `${theme.primary}30` }}>
-              <div className="flex gap-2">
-                <input type="text" value={newCatName} onChange={e => setNewCatName(e.target.value)} placeholder="라벨 이름"
-                  className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none"
-                  style={{ background: theme.panelBackground, borderColor: theme.line, color: theme.text }}
-                  onKeyDown={e => e.key === 'Enter' && handleAddCategory()} />
-                <input type="text" value={newCatEmoji} onChange={e => setNewCatEmoji(e.target.value)} maxLength={2}
-                  className="w-12 rounded-xl border px-2 py-2 text-center text-lg outline-none"
-                  style={{ background: theme.panelBackground, borderColor: theme.line, color: theme.text }} />
-              </div>
-              <div>
-                <p className="text-[10px] mb-1.5" style={{ color: theme.textMuted }}>색상</p>
-                <div className="flex gap-1.5 flex-wrap">
-                  {PRESET_COLORS.map(color => (
-                    <button key={color} onClick={() => setNewCatColor(color)}
-                      className="h-6 w-6 rounded-full border-2 transition-all"
-                      style={{ background: color, borderColor: newCatColor === color ? theme.text : 'transparent' }} />
-                  ))}
+            <motion.div
+              initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+              style={{ overflow: 'hidden' }}
+            >
+              <div className="mb-5 rounded-2xl border p-4 space-y-4" style={{ background: theme.navBackground, borderColor: `${theme.primary}25` }}>
+                <p className="text-xs font-bold uppercase tracking-widest" style={{ color: theme.primary }}>새 라벨 추가</p>
+
+                {/* 이름 + 이모지 */}
+                <div className="flex gap-2">
+                  <input type="text" value={newCatName} onChange={e => setNewCatName(e.target.value)} placeholder="라벨 이름"
+                    className="flex-1 rounded-xl border px-3 py-2.5 text-sm outline-none"
+                    style={{ background: theme.panelBackground, borderColor: theme.line, color: theme.text }}
+                    onKeyDown={e => e.key === 'Enter' && handleAddCategory()} />
+                  <div className="flex flex-col items-center gap-1">
+                    <input type="text" value={newCatEmoji} onChange={e => setNewCatEmoji(e.target.value)} maxLength={2}
+                      className="w-12 rounded-xl border px-2 py-2.5 text-center text-lg outline-none"
+                      style={{ background: theme.panelBackground, borderColor: theme.line, color: theme.text }} />
+                  </div>
+                  <div className="h-10 w-10 self-center rounded-xl border-2 shrink-0 flex items-center justify-center font-bold text-white text-xs"
+                    style={{ background: newCatColor, borderColor: newCatColor }}>
+                    {newCatEmoji}
+                  </div>
                 </div>
-              </div>
-              <div>
-                <p className="text-[10px] mb-1.5" style={{ color: theme.textMuted }}>이모지</p>
-                <div className="flex gap-1.5 flex-wrap">
-                  {PRESET_EMOJIS.map(emoji => (
-                    <button key={emoji} onClick={() => setNewCatEmoji(emoji)}
-                      className="rounded-lg px-1.5 py-1 text-sm border transition-all"
-                      style={{ borderColor: newCatEmoji === emoji ? theme.primary : theme.line, background: newCatEmoji === emoji ? `${theme.primary}15` : 'transparent' }}>
-                      {emoji}
-                    </button>
-                  ))}
+
+                {/* 이모지 프리셋 */}
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-widest mb-2" style={{ color: theme.textMuted }}>이모지</p>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {PRESET_EMOJIS.map(emoji => (
+                      <button key={emoji} onClick={() => setNewCatEmoji(emoji)}
+                        className="rounded-lg px-1.5 py-1 text-sm border transition-all"
+                        style={{ borderColor: newCatEmoji === emoji ? theme.primary : theme.line, background: newCatEmoji === emoji ? `${theme.primary}15` : 'transparent' }}>
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={handleAddCategory}
-                  className="flex-1 rounded-xl py-2 text-sm font-bold text-white"
-                  style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.secondary})` }}>
-                  추가
-                </button>
-                <button onClick={() => setIsAddingCat(false)}
-                  className="rounded-xl px-4 py-2 text-sm border" style={{ borderColor: theme.line, color: theme.textMuted }}>
-                  취소
-                </button>
+
+                {/* 색상 팔레트 선택 */}
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-widest mb-2" style={{ color: theme.textMuted }}>색상 톤 선택</p>
+                  <div className="flex gap-2 flex-wrap mb-3">
+                    {COLOR_PALETTES.map(palette => (
+                      <button key={palette.id} onClick={() => setNewPaletteId(palette.id)}
+                        className="flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-semibold border transition-all"
+                        style={{
+                          background: newPaletteId === palette.id ? `${theme.primary}18` : 'transparent',
+                          borderColor: newPaletteId === palette.id ? theme.primary : theme.line,
+                          color: newPaletteId === palette.id ? theme.primary : theme.textMuted,
+                        }}>
+                        <span>{palette.emoji}</span> {palette.name}
+                        {/* 3-dot preview */}
+                        <span className="flex gap-0.5 ml-0.5">
+                          {palette.colors.slice(0, 3).map(c => (
+                            <span key={c} className="h-2 w-2 rounded-full inline-block" style={{ background: c }} />
+                          ))}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex gap-2 flex-wrap items-center">
+                    {(COLOR_PALETTES.find(p => p.id === newPaletteId)?.colors ?? []).map(color => (
+                      <button key={color} onClick={() => setNewCatColor(color)}
+                        className="h-7 w-7 rounded-full border-2 transition-all hover:scale-110"
+                        style={{ background: color, borderColor: newCatColor === color ? theme.text : 'transparent', boxShadow: newCatColor === color ? `0 0 0 1px ${theme.text}` : 'none' }} />
+                    ))}
+                    {/* 직접 선택 */}
+                    <label className="relative h-7 w-7 rounded-full border-2 border-dashed cursor-pointer flex items-center justify-center overflow-hidden hover:scale-110 transition-all"
+                      style={{ borderColor: theme.line }} title="직접 선택">
+                      <span className="text-[10px]" style={{ color: theme.textMuted }}>+</span>
+                      <input type="color" value={newCatColor} onChange={e => setNewCatColor(e.target.value)}
+                        className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" />
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 pt-1">
+                  <button onClick={handleAddCategory}
+                    className="flex-1 rounded-xl py-2.5 text-sm font-bold text-white"
+                    style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.secondary})` }}>
+                    추가하기
+                  </button>
+                  <button onClick={() => setIsAddingCat(false)}
+                    className="rounded-xl px-5 py-2.5 text-sm border" style={{ borderColor: theme.line, color: theme.textMuted }}>
+                    취소
+                  </button>
+                </div>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* 카테고리 목록 */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-          {categories.map(cat => (
-            <div key={cat.id}>
-              {editingCatId === cat.id ? (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                  className="rounded-2xl border p-3 space-y-2"
-                  style={{ background: theme.navBackground, borderColor: `${cat.color}40` }}>
-                  <div className="flex gap-2">
-                    <input type="text" value={editingCatName} onChange={e => setEditingCatName(e.target.value)}
-                      className="flex-1 rounded-xl border px-3 py-1.5 text-sm outline-none"
-                      style={{ background: theme.panelBackground, borderColor: theme.line, color: theme.text }} />
-                    <input type="text" value={editingCatEmoji} onChange={e => setEditingCatEmoji(e.target.value)} maxLength={2}
-                      className="w-12 rounded-xl border px-2 py-1.5 text-center text-lg outline-none"
-                      style={{ background: theme.panelBackground, borderColor: theme.line, color: theme.text }} />
+        {/* 편집 패널 */}
+        <AnimatePresence>
+          {editingCatId && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+              style={{ overflow: 'hidden' }}
+            >
+              <div className="mb-5 rounded-2xl border p-4 space-y-4" style={{ background: theme.navBackground, borderColor: `${theme.primary}25` }}>
+                <p className="text-xs font-bold uppercase tracking-widest" style={{ color: theme.primary }}>라벨 편집</p>
+
+                <div className="flex gap-2">
+                  <input type="text" value={editingCatName} onChange={e => setEditingCatName(e.target.value)}
+                    className="flex-1 rounded-xl border px-3 py-2.5 text-sm outline-none"
+                    style={{ background: theme.panelBackground, borderColor: theme.line, color: theme.text }} />
+                  <input type="text" value={editingCatEmoji} onChange={e => setEditingCatEmoji(e.target.value)} maxLength={2}
+                    className="w-12 rounded-xl border px-2 py-2.5 text-center text-lg outline-none"
+                    style={{ background: theme.panelBackground, borderColor: theme.line, color: theme.text }} />
+                  <div className="h-10 w-10 self-center rounded-xl border-2 shrink-0 flex items-center justify-center font-bold text-white text-xs"
+                    style={{ background: editingCatColor, borderColor: editingCatColor }}>
+                    {editingCatEmoji}
                   </div>
-                  <div className="flex gap-1 flex-wrap">
-                    {PRESET_COLORS.map(color => (
-                      <button key={color} onClick={() => setEditingCatColor(color)}
-                        className="h-5 w-5 rounded-full border-2 transition-all"
-                        style={{ background: color, borderColor: editingCatColor === color ? theme.text : 'transparent' }} />
+                </div>
+
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-widest mb-2" style={{ color: theme.textMuted }}>이모지</p>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {PRESET_EMOJIS.map(emoji => (
+                      <button key={emoji} onClick={() => setEditingCatEmoji(emoji)}
+                        className="rounded-lg px-1.5 py-1 text-sm border transition-all"
+                        style={{ borderColor: editingCatEmoji === emoji ? theme.primary : theme.line, background: editingCatEmoji === emoji ? `${theme.primary}15` : 'transparent' }}>
+                        {emoji}
+                      </button>
                     ))}
                   </div>
-                  <div className="flex gap-2">
-                    <button onClick={handleSaveEdit} className="flex-1 rounded-xl py-1.5 text-xs font-bold text-white" style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.secondary})` }}>저장</button>
-                    <button onClick={() => setEditingCatId(null)} className="rounded-xl px-3 py-1.5 text-xs border" style={{ borderColor: theme.line, color: theme.textMuted }}>취소</button>
+                </div>
+
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-widest mb-2" style={{ color: theme.textMuted }}>색상 톤 선택</p>
+                  <div className="flex gap-2 flex-wrap mb-3">
+                    {COLOR_PALETTES.map(palette => (
+                      <button key={palette.id} onClick={() => setEditingPaletteId(palette.id)}
+                        className="flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-semibold border transition-all"
+                        style={{
+                          background: editingPaletteId === palette.id ? `${theme.primary}18` : 'transparent',
+                          borderColor: editingPaletteId === palette.id ? theme.primary : theme.line,
+                          color: editingPaletteId === palette.id ? theme.primary : theme.textMuted,
+                        }}>
+                        <span>{palette.emoji}</span> {palette.name}
+                        <span className="flex gap-0.5 ml-0.5">
+                          {palette.colors.slice(0, 3).map(c => (
+                            <span key={c} className="h-2 w-2 rounded-full inline-block" style={{ background: c }} />
+                          ))}
+                        </span>
+                      </button>
+                    ))}
                   </div>
-                </motion.div>
-              ) : (
-                <div className="flex items-center gap-2 rounded-2xl border px-3 py-2.5 group cursor-pointer transition-all hover:border-current"
-                  style={{ background: theme.navBackground, borderColor: theme.line }}
-                  onClick={() => handleStartEdit(cat)}>
-                  <div className="h-3 w-3 rounded-full shrink-0" style={{ background: cat.color }} />
-                  <span className="text-sm mr-1">{cat.emoji}</span>
-                  <span className="text-sm font-medium flex-1 truncate" style={{ color: theme.text }}>{cat.name}</span>
-                  <button onClick={e => { e.stopPropagation(); handleDeleteCategory(cat.id); }}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity"
-                    style={{ color: theme.textMuted }}>
-                    <Trash2 className="h-3.5 w-3.5" />
+                  <div className="flex gap-2 flex-wrap items-center">
+                    {(COLOR_PALETTES.find(p => p.id === editingPaletteId)?.colors ?? []).map(color => (
+                      <button key={color} onClick={() => setEditingCatColor(color)}
+                        className="h-7 w-7 rounded-full border-2 transition-all hover:scale-110"
+                        style={{ background: color, borderColor: editingCatColor === color ? theme.text : 'transparent', boxShadow: editingCatColor === color ? `0 0 0 1px ${theme.text}` : 'none' }} />
+                    ))}
+                    <label className="relative h-7 w-7 rounded-full border-2 border-dashed cursor-pointer flex items-center justify-center overflow-hidden hover:scale-110 transition-all"
+                      style={{ borderColor: theme.line }} title="직접 선택">
+                      <span className="text-[10px]" style={{ color: theme.textMuted }}>+</span>
+                      <input type="color" value={editingCatColor} onChange={e => setEditingCatColor(e.target.value)}
+                        className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" />
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 pt-1">
+                  <button onClick={handleSaveEdit}
+                    className="flex-1 rounded-xl py-2.5 text-sm font-bold text-white"
+                    style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.secondary})` }}>
+                    저장하기
+                  </button>
+                  <button onClick={() => setEditingCatId(null)}
+                    className="rounded-xl px-5 py-2.5 text-sm border" style={{ borderColor: theme.line, color: theme.textMuted }}>
+                    취소
                   </button>
                 </div>
-              )}
-            </div>
-          ))}
-        </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* 라벨 목록 */}
+        {categories.length === 0 ? (
+          <p className="text-sm text-center py-8" style={{ color: theme.textMuted }}>아직 라벨이 없습니다. 라벨을 추가해보세요.</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+            {categories.map(cat => (
+              <div
+                key={cat.id}
+                className="flex items-center gap-2.5 rounded-2xl border px-3.5 py-3 group cursor-pointer transition-all"
+                style={{
+                  background: editingCatId === cat.id ? theme.panelBackgroundStrong : theme.navBackground,
+                  borderColor: editingCatId === cat.id ? theme.primary : theme.line,
+                }}
+                onClick={() => { setIsAddingCat(false); handleStartEdit(cat); }}
+              >
+                <div className="h-4 w-4 rounded-full shrink-0 shadow-sm" style={{ background: cat.color }} />
+                <span className="text-base leading-none">{cat.emoji}</span>
+                <span className="text-sm font-medium flex-1 truncate" style={{ color: theme.text }}>{cat.name}</span>
+                <button onClick={e => { e.stopPropagation(); handleDeleteCategory(cat.id); }}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity rounded-lg p-1 hover:bg-red-50"
+                  style={{ color: theme.textMuted }}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
