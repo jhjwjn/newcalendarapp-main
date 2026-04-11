@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   Flame,
   History,
+  MessageSquare,
   PenSquare,
   RefreshCw,
   RotateCcw,
@@ -20,9 +21,34 @@ import { getPlannerTheme } from '../../../lib/plannerTheme';
 import { DailyStudySet, StudyCardProgress, StudyHistoryEntry } from '../../../types/planner';
 import { callGroqAI, createSystemPrompt, createUserMessage } from '../../../lib/ai/groq';
 import { callGeminiAI, createGeminiMessage } from '../../../lib/ai/gemini';
-import { fetchNewOPICWords, getDailyWords, getOPICStats, markWordAsLearned, OPICWord } from '../../../lib/ai/opic';
+import { fetchNewOPICWords, getDailyWords, getOPICStats, markWordAsLearned, OPICWord, saveDailyWords } from '../../../lib/ai/opic';
+import idiomRaw from '../../../../../idioms.json';
 
-type StudyMode = 'flashcard' | 'opic' | 'review' | 'writing' | 'history';
+interface IdiomEntry {
+  expression: string;
+  meaning_en: string;
+  meaning_ko: string;
+}
+
+const ALL_IDIOMS: IdiomEntry[] = idiomRaw as IdiomEntry[];
+
+function getDailyIdiomSet(count = 20): IdiomEntry[] {
+  const dateStr = format(new Date(), 'yyyy-MM-dd');
+  // Seed shuffle using date parts for daily rotation
+  const seed = dateStr.split('-').reduce((a, b) => a * 31 + parseInt(b), 1);
+  const shuffled = [...ALL_IDIOMS].sort((a, b) => {
+    const ha = (a.expression.charCodeAt(0) * 7 + seed) % 997;
+    const hb = (b.expression.charCodeAt(0) * 7 + seed) % 997;
+    return ha - hb;
+  });
+  return shuffled.slice(0, count);
+}
+
+function parseMeanings(raw: string): string[] {
+  return raw.split(/\s*\/\s*/).map(s => s.trim()).filter(Boolean);
+}
+
+type StudyMode = 'flashcard' | 'opic' | 'review' | 'writing' | 'history' | 'idiom';
 type HistoryFilter = 'all' | 'correct' | 'incorrect';
 
 const HISTORY_STORAGE_KEY = 'planner_study_history';
@@ -70,6 +96,13 @@ export function StudyTab() {
   const [opicFlipped, setOpicFlipped] = useState(false);
   const [opicCorrect, setOpicCorrect] = useState(0);
   const [opicTotal, setOpicTotal] = useState(0);
+
+  // Idiom mode state
+  const [idiomDeck] = useState<IdiomEntry[]>(() => getDailyIdiomSet(20));
+  const [idiomIndex, setIdiomIndex] = useState(0);
+  const [idiomFlipped, setIdiomFlipped] = useState(false);
+  const [idiomCorrect, setIdiomCorrect] = useState(0);
+  const [idiomTotal, setIdiomTotal] = useState(0);
   
   const [writingPrompts, setWritingPrompts] = useState<string[]>([]);
   const [currentPromptIndex, setCurrentPromptIndex] = useState(0);
@@ -110,52 +143,70 @@ export function StudyTab() {
     const savedPrompts = localStorage.getItem(`writing_prompts_${todayStr}`);
     if (savedPrompts) {
       try {
-        return JSON.parse(savedPrompts);
+        const parsed = JSON.parse(savedPrompts);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       } catch {
-        return [];
+        // ignore
       }
     }
-    
-    const upcomingEvents = events
-      .filter(e => e.date >= todayStr)
-      .sort((a, b) => a.date.localeCompare(b.date))
-      .slice(0, 3);
-    
-    const prompts = [
-      upcomingEvents.length > 0
-        ? `당신의 예정된 일정: ${upcomingEvents.map(e => `${e.title}(${e.date})`).join(', ')} 중 하나에 대해 영어로 설명해주세요.`
-        : '오늘의 목표에 대해 영어로 작성해주세요.',
-      '최근에 경험한难忘한 일을 영어로 설명해주세요.',
+
+    // 30개 프롬프트 풀 — 날짜로 5개 선택 (매일 다른 세트)
+    const PROMPT_POOL = [
+      '오늘 하루 일과를 영어로 설명해주세요.',
       '좋아하는 음식이나 레스토랑에 대해 영어로 소개해주세요.',
       '최근 본 영화나 드라마에 대해 영어로 리뷰해주세요.',
-      '좋아하는 여행지에 대해 영어로 설명해주세요.',
+      '좋아하는 여행지나 가보고 싶은 곳을 영어로 설명해주세요.',
+      '주말에 주로 무엇을 하는지 영어로 말해주세요.',
+      '가장 기억에 남는 경험을 영어로 이야기해주세요.',
+      '현재 배우고 있는 것이나 관심 있는 분야를 영어로 소개해주세요.',
+      '좋아하는 운동이나 취미에 대해 영어로 말해주세요.',
+      '최근에 읽은 책이나 관심 있는 책을 영어로 소개해주세요.',
+      '자신의 하루 루틴(아침, 점심, 저녁)을 영어로 설명해주세요.',
+      '가장 존경하는 사람에 대해 영어로 말해주세요.',
+      '미래의 꿈이나 목표에 대해 영어로 이야기해주세요.',
+      '현재 살고 있는 동네나 도시를 영어로 소개해주세요.',
+      '가장 좋아하는 계절과 그 이유를 영어로 말해주세요.',
+      '최근에 구매한 물건이나 사고 싶은 것을 영어로 소개해주세요.',
+      '가족이나 친구에 대해 영어로 소개해주세요.',
+      '학교나 직장에서 있었던 인상적인 일을 영어로 말해주세요.',
+      '건강을 위해 어떤 노력을 하는지 영어로 이야기해주세요.',
+      '좋아하는 음악이나 아티스트를 영어로 소개해주세요.',
+      '가장 인상 깊었던 여행 경험을 영어로 말해주세요.',
+      '요리를 해본 경험이나 좋아하는 음식을 영어로 설명해주세요.',
+      '스트레스를 해소하는 방법에 대해 영어로 이야기해주세요.',
+      '처음으로 도전해 보고 싶은 것을 영어로 말해주세요.',
+      '환경 문제에 대한 자신의 생각을 영어로 이야기해주세요.',
+      '최근 뉴스나 관심 있는 사회 이슈에 대해 영어로 말해주세요.',
+      '자신의 강점과 약점에 대해 영어로 이야기해주세요.',
+      '기술이 일상생활에 미치는 영향을 영어로 설명해주세요.',
+      '어릴 때와 지금을 비교해서 바뀐 점을 영어로 말해주세요.',
+      '팀워크가 중요했던 경험을 영어로 이야기해주세요.',
+      '앞으로 5년 안에 이루고 싶은 것을 영어로 말해주세요.',
     ];
-    
-    localStorage.setItem(`writing_prompts_${todayStr}`, JSON.stringify(prompts));
-    return prompts;
+
+    // 날짜를 시드로 사용하여 매일 다른 5개 선택
+    const dayOfYear = Math.floor((new Date().getTime() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000);
+    const selected: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      selected.push(PROMPT_POOL[(dayOfYear * 7 + i * 6) % PROMPT_POOL.length]);
+    }
+
+    localStorage.setItem(`writing_prompts_${todayStr}`, JSON.stringify(selected));
+    return selected;
   };
   
-  const loadOpicWords = async () => {
-    if (!settings.groqApiKey) return;
-    
+  const loadOpicWords = () => {
     setIsLoadingOpic(true);
     try {
       const cached = getDailyWords();
-      if (cached && cached.length > 0) {
-        setOpicWords(cached);
+      const words = (cached && cached.length > 0) ? cached : fetchNewOPICWords('', 20);
+      if (words.length > 0) {
+        saveDailyWords(words);
+        setOpicWords(words);
         setOpicIndex(0);
         setOpicFlipped(false);
         setOpicCorrect(0);
         setOpicTotal(0);
-      } else {
-        const words = await fetchNewOPICWords(settings.groqApiKey, 20);
-        if (words.length > 0) {
-          setOpicWords(words);
-          setOpicIndex(0);
-          setOpicFlipped(false);
-          setOpicCorrect(0);
-          setOpicTotal(0);
-        }
       }
     } catch (error) {
       console.error('OPIC load error:', error);
@@ -515,6 +566,7 @@ export function StudyTab() {
 
   const modeTabs = [
     { id: 'flashcard' as const, label: '플래시카드', icon: BookOpen },
+    { id: 'idiom' as const, label: '영어 표현', icon: MessageSquare },
     { id: 'opic' as const, label: 'OPIC 단어', icon: Sparkles },
     { id: 'review' as const, label: '복습 모드', icon: RotateCcw },
     { id: 'writing' as const, label: '쓰기 연습', icon: PenSquare },
@@ -708,6 +760,128 @@ export function StudyTab() {
     );
   };
 
+  const renderIdiomMode = () => {
+    const currentIdiom = idiomDeck[idiomIndex];
+
+    if (idiomIndex >= idiomDeck.length) {
+      return (
+        <div className="rounded-[22px] border p-6 text-center"
+          style={{ background: theme.panelBackground, borderColor: theme.panelBorder, boxShadow: theme.panelShadow }}>
+          <h3 className="mb-4 text-xl font-semibold" style={{ color: theme.text }}>오늘의 표현 학습 완료!</h3>
+          <div className="mb-6 rounded-2xl border p-4" style={{ background: theme.navBackground, borderColor: theme.line }}>
+            <div className="text-4xl font-bold" style={{ color: theme.primary }}>{idiomCorrect}/{idiomTotal}</div>
+            <div className="mt-1 text-sm" style={{ color: theme.textMuted }}>정답률 {idiomTotal > 0 ? Math.round((idiomCorrect / idiomTotal) * 100) : 0}%</div>
+          </div>
+          <button onClick={() => { setIdiomIndex(0); setIdiomFlipped(false); setIdiomCorrect(0); setIdiomTotal(0); }}
+            className="rounded-2xl px-6 py-3 font-semibold" style={{ background: theme.navActiveBackground, color: theme.navActiveText }}>
+            다시 시작
+          </button>
+        </div>
+      );
+    }
+
+    if (!currentIdiom) return null;
+
+    const enMeanings = parseMeanings(currentIdiom.meaning_en);
+    const koMeanings = parseMeanings(currentIdiom.meaning_ko);
+    // 너무 많으면 2개까지만 표시
+    const showEn = enMeanings.slice(0, 2);
+    const showKo = koMeanings.slice(0, 2);
+    const extraEn = enMeanings.length > 2 ? enMeanings.length - 2 : 0;
+    const extraKo = koMeanings.length > 2 ? koMeanings.length - 2 : 0;
+
+    return (
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_196px]">
+        <div className="rounded-[22px] border p-3.5"
+          style={{ background: theme.panelBackground, borderColor: theme.panelBorder, boxShadow: theme.panelShadow }}>
+          <div className="mb-3 flex items-center justify-between text-sm" style={{ color: theme.textMuted }}>
+            <span>표현 {idiomIndex + 1} / {idiomDeck.length}</span>
+            <span>정답 {idiomCorrect} / {idiomTotal}</span>
+          </div>
+
+          <div onClick={() => setIdiomFlipped(f => !f)} className="relative h-[200px] cursor-pointer perspective-1000 md:h-[300px]">
+            <div className={`absolute inset-0 h-full w-full transition-transform duration-500 transform-style-3d ${idiomFlipped ? 'rotate-y-180' : ''}`}>
+              {/* 앞면: 표현 */}
+              <div className="absolute inset-0 flex h-full w-full flex-col items-center justify-center rounded-[24px] px-5 text-white backface-hidden"
+                style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.secondary})`, boxShadow: `0 24px 60px ${theme.primary}30` }}>
+                <RotateCcw className="mb-3 h-5 w-5 opacity-60" />
+                <h2 className="mb-2 text-center text-xl font-bold leading-snug md:text-2xl">{currentIdiom.expression}</h2>
+                <p className="text-xs opacity-70">탭하여 뜻 보기</p>
+              </div>
+
+              {/* 뒷면: 의미 */}
+              <div className="absolute inset-0 flex h-full w-full flex-col items-center justify-center rounded-[24px] px-5 text-white backface-hidden rotate-y-180 overflow-hidden"
+                style={{ background: `linear-gradient(135deg, ${theme.accent1}, ${theme.secondary})`, boxShadow: `0 24px 60px ${theme.accent1}30` }}>
+                <div className="w-full space-y-3 text-center">
+                  <div>
+                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest opacity-60">English</p>
+                    {showEn.map((m, i) => <p key={i} className="text-sm font-medium leading-5">{m}</p>)}
+                    {extraEn > 0 && <p className="text-xs opacity-60">외 {extraEn}개</p>}
+                  </div>
+                  <div className="border-t border-white/20 pt-3">
+                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest opacity-60">Korean</p>
+                    {showKo.map((m, i) => <p key={i} className="text-sm font-medium leading-5">{m}</p>)}
+                    {extraKo > 0 && <p className="text-xs opacity-60">외 {extraKo}개</p>}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 flex items-center justify-between">
+            <button onClick={() => { if (idiomIndex > 0) { setIdiomIndex(i => i - 1); setIdiomFlipped(false); } }}
+              disabled={idiomIndex === 0}
+              className="rounded-full p-3 transition-colors disabled:opacity-30"
+              style={{ background: theme.navBackground, color: theme.textSecondary }}>
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+            <div className="flex gap-2.5">
+              <button onClick={() => { setIdiomTotal(t => t + 1); setIdiomIndex(i => i + 1); setIdiomFlipped(false); }}
+                className="flex items-center gap-2 rounded-2xl px-3.5 py-2 text-sm font-semibold"
+                style={{ background: `${theme.accent1}18`, color: theme.accent1 }}>
+                <XCircle className="h-5 w-5" />모름
+              </button>
+              <button onClick={() => { setIdiomCorrect(c => c + 1); setIdiomTotal(t => t + 1); setIdiomIndex(i => i + 1); setIdiomFlipped(false); }}
+                className="flex items-center gap-2 rounded-2xl px-3.5 py-2 text-sm font-semibold"
+                style={{ background: `${theme.tertiary}18`, color: theme.tertiary }}>
+                <CheckCircle2 className="h-5 w-5" />알아요
+              </button>
+            </div>
+            <button onClick={() => { setIdiomIndex(i => i + 1); setIdiomFlipped(false); }}
+              className="rounded-full p-3" style={{ background: theme.navBackground, color: theme.textSecondary }}>
+              <ArrowRight className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+
+        <div className="rounded-[22px] border p-3.5"
+          style={{ background: theme.panelBackground, borderColor: theme.panelBorder, boxShadow: theme.panelShadow }}>
+          <div className="text-xs font-semibold uppercase tracking-[0.24em]" style={{ color: theme.textMuted }}>오늘 표현</div>
+          <div className="mt-4 space-y-2.5">
+            <div className="rounded-2xl border px-3.5 py-3" style={{ background: theme.navBackground, borderColor: theme.line }}>
+              <div className="text-xs" style={{ color: theme.textMuted }}>오늘 세트</div>
+              <div className="mt-1 text-base font-semibold" style={{ color: theme.text }}>{idiomDeck.length}개</div>
+            </div>
+            <div className="rounded-2xl border px-3.5 py-3" style={{ background: theme.navBackground, borderColor: theme.line }}>
+              <div className="text-xs" style={{ color: theme.textMuted }}>진행률</div>
+              <div className="mt-1 text-base font-semibold" style={{ color: theme.text }}>{idiomIndex} / {idiomDeck.length}</div>
+            </div>
+            <div className="rounded-2xl border px-3.5 py-3" style={{ background: theme.navBackground, borderColor: theme.line }}>
+              <div className="text-xs" style={{ color: theme.textMuted }}>정답률</div>
+              <div className="mt-1 text-base font-semibold" style={{ color: theme.tertiary }}>
+                {idiomTotal > 0 ? Math.round((idiomCorrect / idiomTotal) * 100) : 0}%
+              </div>
+            </div>
+            <div className="rounded-2xl border px-3.5 py-3" style={{ background: theme.navBackground, borderColor: theme.line }}>
+              <div className="text-xs" style={{ color: theme.textMuted }}>전체 표현 수</div>
+              <div className="mt-1 text-base font-semibold" style={{ color: theme.text }}>{ALL_IDIOMS.length.toLocaleString()}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderOpicMode = () => {
     if (opicWords.length === 0 && !isLoadingOpic) {
       return (
@@ -743,15 +917,11 @@ export function StudyTab() {
           </div>
           <button
             onClick={loadOpicWords}
-            disabled={!settings.groqApiKey}
-            className="rounded-2xl px-6 py-3 font-semibold disabled:opacity-50"
-            style={{ background: settings.groqApiKey ? theme.navActiveBackground : theme.navBackground, color: settings.groqApiKey ? theme.navActiveText : theme.textMuted }}
+            className="rounded-2xl px-6 py-3 font-semibold"
+            style={{ background: theme.navActiveBackground, color: theme.navActiveText }}
           >
-            {!settings.groqApiKey ? 'API 키 필요' : '오늘의 단어 시작하기'}
+            오늘의 단어 시작하기
           </button>
-          {!settings.groqApiKey && (
-            <p className="mt-2 text-xs" style={{ color: theme.textMuted }}>설정에서 Groq API 키를 입력해주세요</p>
-          )}
         </div>
       );
     }
@@ -766,7 +936,7 @@ export function StudyTab() {
           }}
         >
           <div className="animate-pulse text-lg" style={{ color: theme.text }}>
-            AI가 단어를 가져오는 중...
+            단어를 불러오는 중...
           </div>
         </div>
       );
@@ -1278,6 +1448,7 @@ export function StudyTab() {
                 transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
               >
                 {(mode === 'flashcard' || mode === 'review') && renderFlashcardMode()}
+                {mode === 'idiom' && renderIdiomMode()}
                 {mode === 'opic' && renderOpicMode()}
                 {mode === 'writing' && renderWritingMode()}
                 {mode === 'history' && renderHistoryMode()}

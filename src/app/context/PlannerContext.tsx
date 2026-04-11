@@ -43,8 +43,8 @@ interface PlannerContextType {
   studySessions: StudySession[];
   recordStudySession: (cardsStudied: number, correctAnswers: number) => void;
 
-  studyMode: 'flashcard' | 'review' | 'opic' | 'writing' | 'history';
-  setStudyMode: (mode: 'flashcard' | 'review' | 'opic' | 'writing' | 'history') => void;
+  studyMode: 'flashcard' | 'review' | 'opic' | 'writing' | 'history' | 'idiom';
+  setStudyMode: (mode: 'flashcard' | 'review' | 'opic' | 'writing' | 'history' | 'idiom') => void;
 
   // Habits
   habits: Habit[];
@@ -124,7 +124,7 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
     geminiApiKey: '',
   });
   const [todayBriefing, setTodayBriefing] = useState('좋은 하루입니다! 오늘도 계획대로 멋지게 시작해봐요. 💪');
-  const [studyMode, setStudyMode] = useState<'flashcard' | 'review' | 'opic' | 'writing' | 'history'>('flashcard');
+  const [studyMode, setStudyMode] = useState<'flashcard' | 'review' | 'opic' | 'writing' | 'history' | 'idiom'>('flashcard');
   const [isInitialized, setIsInitialized] = useState(false);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -246,7 +246,17 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
           groqApiKey: profileRes.data.groq_api_key || '',
         };
         setSettings(prev => {
-          const updated = { ...prev, ...profileSettings };
+          // Preserve locally-stored keys that aren't synced to Supabase
+          const localRaw = localStorage.getItem('planner_settings');
+          const localStored: Partial<PlannerSettings> = localRaw ? JSON.parse(localRaw) : {};
+          const updated = {
+            ...prev,
+            ...profileSettings,
+            geminiApiKey: prev.geminiApiKey || localStored.geminiApiKey || '',
+            isDarkMode: prev.isDarkMode ?? localStored.isDarkMode,
+            glassAccent: prev.glassAccent || localStored.glassAccent,
+            glassAccentDark: prev.glassAccentDark || localStored.glassAccentDark,
+          };
           localStorage.setItem('planner_settings', JSON.stringify(updated));
           return updated;
         });
@@ -456,7 +466,12 @@ export function PlannerProvider({ children }: { children: ReactNode }) {
   };
 
   const updateSettings = async (updates: Partial<PlannerSettings>) => {
-    setSettings(prev => ({ ...prev, ...updates }));
+    setSettings(prev => {
+      const updated = { ...prev, ...updates };
+      // Save immediately (don't wait for debounced auto-save)
+      localStorage.setItem('planner_settings', JSON.stringify(updated));
+      return updated;
+    });
     if (user) {
       const dbUpdates: Record<string, unknown> = {};
       if (updates.name !== undefined) dbUpdates.name = updates.name;

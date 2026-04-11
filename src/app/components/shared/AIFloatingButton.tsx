@@ -182,38 +182,51 @@ export function AIFloatingButton({ className = '' }: AIFloatingButtonProps) {
     return categories[0]?.name || '일반';
   };
 
+  // 질문 의도 감지 - 일정 조회/질문이지 등록이 아님
+  const isScheduleQuery = (text: string): boolean => {
+    return text.includes('?') || text.includes('？') ||
+      /무슨\s*일정|어떤\s*일정|뭐\s*있|뭐가\s*있|일정\s*(있나|있어|있을|알려|보여|확인)|언제\s*(있|인지|야)/.test(text);
+  };
+
   const isScheduleRegistration = (text: string): boolean => {
+    if (isScheduleQuery(text)) return false;
+
     const lowerText = text.toLowerCase();
-    
-    const hasDateTime = ['오늘', '내일', '모레', '글피', '주말', '시', '분에', '때', '일', '달', '주', '오전', '오후', '년', '월'].some(w => lowerText.includes(w));
-    
-    const eventWords = ['시험', '중간', '기말', '미팅', '회의', '공부', '운동', '약속', '수업', '강의', '발표', '면접', '개인', '할일', '일정', '고사', '퀴즈', '과제', '컨퍼런스', '세미나', '친구', '가족', '여자친구', '남자친구', '데이트', '산책', '여행', '드라마', '영화', '게임', '콘서트'];
-    
+    const hasDateTime = ['오늘', '내일', '모레', '글피', '주말', '시', '분에', '오전', '오후'].some(w => lowerText.includes(w));
+    const registerWords = ['등록', '추가', '넣어', '잡아', '만들어', '있어요', '있음', '있습니다', '있다'];
+    const hasRegisterIntent = registerWords.some(w => lowerText.includes(w));
+    const eventWords = ['시험', '중간', '기말', '미팅', '회의', '공부', '운동', '약속', '수업', '강의', '발표', '면접', '과제', '퀴즈', '고사', '컨퍼런스', '세미나', '데이트', '여행', '콘서트'];
     const hasEventWord = eventWords.some(w => lowerText.includes(w));
-    
-    return hasDateTime || hasEventWord;
+
+    return (hasDateTime && (hasEventWord || hasRegisterIntent)) || (hasEventWord && hasRegisterIntent);
   };
 
   const parseScheduleText = (text: string): { title: string; date: string; time: string; category: string } | null => {
     if (!isScheduleRegistration(text)) {
       return null;
     }
-    
+
     let title = text
       .replace(/(오늘|내일|모레|글피|주말)/g, ' ')
-      .replace(/(에|은|는|이|가|을|를|의|로|으로|때|때문에)/g, ' ')
-      .replace(/(있어|있고|있습니다|있네요|있네|있음|있었어)/g, ' ')
-      .replace(/(것 같아|것 같은데|것 같습니다|듯해|듯한데|해야할|해야하는|좀 |참 |그냥 |일단 |우선)/g, ' ')
-      .replace(/(해야해|해야돼|해야한다|했어|할게|할래)/g, ' ')
-      .replace(/(오전|오후)/g, ' ')
-      .replace(/(등록|추가|일정|잡아|넣어|만들어)/g, ' ')
-      .replace(/\d+일\s*(뒤|후|나중에)/g, '')
+      .replace(/\d+일\s*(뒤|후|나중에)/g, ' ')
       .replace(/\d{1,2}시\s*(반|\d{1,2}분)?/g, ' ')
+      .replace(/(오전|오후)/g, ' ')
+      .replace(/(등록|추가|잡아|넣어|만들어|해주세요|해줘|부탁)/g, ' ')
+      .replace(/(있어요?|있습니다|있음\.?|있다\.?|있네요?)/g, ' ')
+      .replace(/(것 같아|것 같은데|해야할|해야하는)/g, ' ')
+      .replace(/(해야해|해야돼|해야한다|할게|할래)/g, ' ')
+      .replace(/[.!,。]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
-    
+
+    // 조사 제거 (단어 끝의 조사만)
+    title = title.replace(/\s+(에|은|는|이|가|을|를|의|로|으로|때|에서)\b/g, ' ')
+      .replace(/\b(에|은|는|이|가|을|를)\s+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
     const coreWords = ['시험', '중간', '기말', '미팅', '회의', '공부', '운동', '약속', '수업', '발표', '고사', '강의', '면접', '컨퍼런스', '세미나', '산책', '여행', '드라마', '영화', '게임', '콘서트'];
-    
+
     let foundCore = '';
     for (const word of coreWords) {
       if (title.includes(word)) {
@@ -221,20 +234,22 @@ export function AIFloatingButton({ className = '' }: AIFloatingButtonProps) {
         break;
       }
     }
-    
+
     if (foundCore) {
       const coreIndex = title.indexOf(foundCore);
-      title = title.substring(coreIndex);
-      title = title.replace(/\s+(것|좀|해야|할|해|했)/g, '');
-      title = title.replace(/^(것|좀|해야|할|해|했)\s+/g, '');
+      // 핵심 단어 앞에 있는 설명어 보존 (예: "전자기학 시험" → "전자기학" 유지)
+      const preceding = title.substring(0, coreIndex).trim();
+      const coreAndAfter = title.substring(coreIndex)
+        .replace(/\s+(것|좀|해야|할|해|했|있음|있어|있는데|있고|거|야|인데)\b/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      title = preceding ? `${preceding} ${coreAndAfter}` : coreAndAfter;
     }
-    
-    title = title.replace(/^(시험|중간|기말|미팅|회의|공부|운동|약속|수업|발표|고사|강의)/g, '$1');
-    
+
     if (title.length < 2) {
       title = foundCore || '새 일정';
     }
-    
+
     return {
       title: title.trim(),
       date: parseRelativeDate(text),
@@ -482,6 +497,36 @@ JSON 형식으로 응답:
       return;
     }
 
+    // 일정 조회 질문 처리 (등록이 아닌 질문)
+    if (isScheduleQuery(input)) {
+      const lowerInput = input.toLowerCase();
+      const today = new Date();
+      let targetDate = format(today, 'yyyy-MM-dd');
+      if (lowerInput.includes('내일')) targetDate = format(addDays(today, 1), 'yyyy-MM-dd');
+      else if (lowerInput.includes('모레')) targetDate = format(addDays(today, 2), 'yyyy-MM-dd');
+      else if (lowerInput.includes('이번 주') || lowerInput.includes('이번주')) {
+        const weekStart = startOfWeek(today, { weekStartsOn: 1 });
+        const weekEnd = endOfWeek(today, { weekStartsOn: 1 });
+        const weekEvents = events.filter(e => e.date >= format(weekStart, 'yyyy-MM-dd') && e.date <= format(weekEnd, 'yyyy-MM-dd'));
+        const summary = weekEvents.length > 0
+          ? weekEvents.map(e => `• ${e.date} ${e.startTime} ${e.title}`).join('\n')
+          : '이번 주 일정이 없습니다.';
+        setMessages(prev => [...prev, { id: `ai-${Date.now()}`, role: 'ai', content: `📅 이번 주 일정:\n${summary}` }]);
+        setIsLoading(false);
+        isSubmittingRef.current = false;
+        return;
+      }
+      const dayEvents = events.filter(e => e.date === targetDate).sort((a, b) => a.startTime.localeCompare(b.startTime));
+      const label = lowerInput.includes('내일') ? '내일' : lowerInput.includes('모레') ? '모레' : '오늘';
+      const summary = dayEvents.length > 0
+        ? dayEvents.map(e => `• ${e.startTime} ${e.title}`).join('\n')
+        : `${label} 일정이 없습니다.`;
+      setMessages(prev => [...prev, { id: `ai-${Date.now()}`, role: 'ai', content: `📅 ${label}(${targetDate}) 일정:\n${summary}` }]);
+      setIsLoading(false);
+      isSubmittingRef.current = false;
+      return;
+    }
+
     if (isScheduleRegistration(input)) {
       const parsed = parseScheduleText(input);
       if (parsed) {
@@ -659,6 +704,7 @@ JSON 형식으로 응답:
   const renderBlock = (msg: ChatMessage) => {
     switch (msg.blockType) {
       case 'event':
+        if (!msg.blockData) return null;
         return renderEventBlock(msg.blockData);
       case 'shopping':
         return renderShoppingBlock(msg.blockData?.items || shoppingList);
