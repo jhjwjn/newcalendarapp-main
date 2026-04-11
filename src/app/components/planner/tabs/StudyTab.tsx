@@ -19,6 +19,7 @@ import { usePlanner } from '../../../context/PlannerContext';
 import { getPlannerTheme } from '../../../lib/plannerTheme';
 import { DailyStudySet, StudyCardProgress, StudyHistoryEntry } from '../../../types/planner';
 import { callGroqAI, createSystemPrompt, createUserMessage } from '../../../lib/ai/groq';
+import { callGeminiAI, createGeminiMessage } from '../../../lib/ai/gemini';
 import { fetchNewOPICWords, getDailyWords, getOPICStats, markWordAsLearned, OPICWord } from '../../../lib/ai/opic';
 
 type StudyMode = 'flashcard' | 'opic' | 'review' | 'writing' | 'history';
@@ -191,22 +192,20 @@ export function StudyTab() {
   };
   
   const generateWritingPrompts = async () => {
-    if (!settings.groqApiKey) return;
-    
+    if (!settings.geminiApiKey) return;
+
     setIsGeneratingFeedback(true);
     try {
-      const systemPrompt = createSystemPrompt('영어 작문 프롬프트 생성기', `
-        OPIC 시험 준비를 위한 영어 작문 프롬프트를 ${5}개 생성해주세요.
-        사용자 일정과 관련된 현실적인 상황을 포함해야 합니다.
-        각 프롬프트는 1-2문장으로 작성해주세요.
-        
-        응답 형식 (JSON 배열):
-        ["프롬프트1", "프롬프트2", ...]
-      `);
-      
-      const userMessage = createUserMessage('오늘의 작문 프롬프트를 생성해주세요.');
-      
-      const response = await callGroqAI(settings.groqApiKey, [systemPrompt, userMessage], 500);
+      const messages = [
+        createGeminiMessage('system', 'You are an OPIC exam writing prompt generator. Create natural, realistic English writing prompts for Korean learners.'),
+        createGeminiMessage('user', `OPIC 시험 준비를 위한 영어 작문 프롬프트 5개를 생성해주세요.
+현실적인 일상 상황을 포함하고, 각 프롬프트는 1-2문장으로 작성해주세요.
+
+응답 형식 (JSON 배열):
+["프롬프트1", "프롬프트2", ...]`),
+      ];
+
+      const response = await callGeminiAI(settings.geminiApiKey, messages, 500);
       
       try {
         const jsonMatch = response.match(/\[[\s\S]*?\]/);
@@ -226,8 +225,8 @@ export function StudyTab() {
   };
   
   const requestWritingFeedback = async () => {
-    if (!settings.groqApiKey) {
-      setWritingFeedback('피드백을 생성하려면 설정에서 Groq API 키를 입력해주세요.');
+    if (!settings.geminiApiKey) {
+      setWritingFeedback('피드백을 생성하려면 설정에서 Gemini API 키를 입력해주세요.');
       return;
     }
 
@@ -238,21 +237,20 @@ export function StudyTab() {
 
     setIsGeneratingFeedback(true);
     try {
-      const systemPrompt = createSystemPrompt('영어 피드백 전문가', `
-        사용자의 영어 문장에 대해 OPIC 준비용 피드백을 제공해주세요.
-        
-        피드백 형식:
-        1. 문법 교정 (있을 경우)
-        2. 더 자연스러운 표현 제안
-        3. 개선된 예문
-        4. 전체 평가
-        
-        한국어로 작성해주세요.
-      `);
-      
-      const userMessage = createUserMessage(`사용자 문장: ${writingInput}\n\n이 문장에 대한 피드백을 제공해주세요.`);
+      const messages = [
+        createGeminiMessage('system', 'You are an expert English writing coach for OPIC exam preparation. Provide detailed, accurate feedback in Korean. Never mix Chinese characters into Korean output.'),
+        createGeminiMessage('user', `다음 영어 문장에 대해 OPIC 준비용 피드백을 한국어로 제공해주세요.
 
-      const response = await callGroqAI(settings.groqApiKey, [systemPrompt, userMessage], 600);
+사용자 문장: ${writingInput}
+
+피드백 형식:
+1. 문법 교정 (있을 경우)
+2. 더 자연스러운 표현 제안
+3. 개선된 예문
+4. 전체 평가`),
+      ];
+
+      const response = await callGeminiAI(settings.geminiApiKey, messages, 600);
       setWritingFeedback(response);
     } catch (error) {
       console.error('Writing feedback error:', error);

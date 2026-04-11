@@ -73,7 +73,7 @@ ${notesContext}
       createUserMessage(prompt),
     ];
 
-    const content = await callGroqAI(apiKey, messages, 150);
+    const content = await callGroqAI(apiKey, messages, 150, true);
     setCachedInspiration(content);
     return content;
   } catch (error) {

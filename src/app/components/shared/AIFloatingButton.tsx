@@ -4,6 +4,7 @@ import { Sparkles, X, Send, Calendar, Clock, Tag, Plus, Check, AlertCircle, Repe
 import { toast } from '../../lib/toast';
 import { usePlanner } from '../../context/PlannerContext';
 import { callGroqAI, createSystemPrompt, createUserMessage } from '../../lib/ai/groq';
+import { callGeminiAI, createGeminiMessage } from '../../lib/ai/gemini';
 import { getPlannerTheme } from '../../lib/plannerTheme';
 import { format, addDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, differenceInDays, parseISO } from 'date-fns';
 
@@ -457,7 +458,7 @@ JSON 형식으로 응답:
       const userMessage = createUserMessage(`사용자 요청: "${input}"\n현재 날짜: ${format(new Date(), 'yyyy-MM-dd')}`);
 
       try {
-        const response = await callGroqAI(settings.groqApiKey, [systemPrompt, userMessage], 1000);
+        const response = await callGroqAI(settings.groqApiKey, [systemPrompt, userMessage], 1000, true);
         const jsonMatch = response.match(/\{[\s\S]*?\}/);
         if (jsonMatch) {
           const parsed = JSON.parse(jsonMatch[0]);
@@ -508,33 +509,54 @@ JSON 형식으로 응답:
       }
     }
 
-    if (!settings.groqApiKey) {
+    if (!settings.groqApiKey && !settings.geminiApiKey) {
       setMessages(prev => [...prev, {
         id: `ai-${Date.now()}`,
         role: 'ai',
-        content: '죄송해요, 아직 AI가 활성화되지 않았어요. 설정에서 API 키를 입력해주세요.',
+        content: '죄송해요, 아직 AI가 활성화되지 않았어요. 설정에서 Groq 또는 Gemini API 키를 입력해주세요.',
       }]);
       setIsLoading(false);
       isSubmittingRef.current = false;
       return;
     }
 
-    const systemPrompt = createSystemPrompt('스마트 어시스턴트', `
-당신은 친절하고 똑똑한 AI 어시스턴트입니다.
-일정 관리, 학습 계획, 운동 루틴, 목표 설정, 일상 조언 등 다양한 분야에서 도움을 줍니다.
-답변은 항상 친절하고 도움이 되는 톤으로 해주세요.
-
-[중요] 한국어만 사용하세요. 절대 한자(漢字, 中国語, 日本, 或은 등)를 섞지 마세요. 모든 응답은 순수 한국어로만 작성하세요. 이 규칙은 절대 어기지 마세요.
-`);
-    const aiUserMsg = createUserMessage(`사용자: "${input}"\n\n현재 일정 수: ${events.length}개\n이번 주 일정: ${events.filter(e => {
+    const weeklyEventCount = events.filter(e => {
       const date = parseISO(e.date);
       const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
       const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
       return date >= weekStart && date <= weekEnd;
-    }).length}개`);
-    
+    }).length;
+
     try {
-      const response = await callGroqAI(settings.groqApiKey, [systemPrompt, aiUserMsg], 800);
+      let response: string;
+
+      if (settings.geminiApiKey) {
+        // Step 1: Llama-8B(fast)로 의도 분류
+        let intent = 'general';
+        if (settings.groqApiKey) {
+          try {
+            const routerMsg = createUserMessage(`다음 사용자 입력의 의도를 분류하세요. 반드시 단어 하나만 응답하세요: "schedule" (일정/날짜 관련) 또는 "general" (일반 대화/조언).
+사용자 입력: "${input}"`);
+            const routerResp = await callGroqAI(settings.groqApiKey, [routerMsg], 10, true);
+            if (routerResp.toLowerCase().includes('schedule')) intent = 'schedule';
+          } catch {
+            // router 실패 시 general로 처리
+          }
+        }
+
+        // Step 2: Gemini로 응답 생성
+        const geminiMessages = [
+          createGeminiMessage('system', `당신은 친절하고 똑똑한 AI 어시스턴트입니다. 일정 관리, 학습 계획, 운동 루틴, 목표 설정, 일상 조언 등 다양한 분야에서 도움을 줍니다. 답변은 항상 친절하고 도움이 되는 톤으로 해주세요. 한국어로만 응답하세요.`),
+          createGeminiMessage('user', `사용자: "${input}"\n\n현재 일정 수: ${events.length}개\n이번 주 일정: ${weeklyEventCount}개${intent === 'schedule' ? '\n\n[일정/날짜 관련 질문입니다. 구체적인 날짜와 일정을 포함해 답변해주세요.]' : ''}`),
+        ];
+        response = await callGeminiAI(settings.geminiApiKey, geminiMessages, 800);
+      } else {
+        // Gemini 없을 때 Groq-8B fallback
+        const systemPrompt = createSystemPrompt('스마트 어시스턴트', '친절하고 도움이 되는 AI 어시스턴트입니다. 한국어로만 응답하세요. 한자를 절대 섞지 마세요.');
+        const aiUserMsg = createUserMessage(`사용자: "${input}"\n\n현재 일정 수: ${events.length}개\n이번 주 일정: ${weeklyEventCount}개`);
+        response = await callGroqAI(settings.groqApiKey, [systemPrompt, aiUserMsg], 800, true);
+      }
+
       setMessages(prev => [...prev, {
         id: `ai-${Date.now()}`,
         role: 'ai',
@@ -544,7 +566,7 @@ JSON 형식으로 응답:
       setMessages(prev => [...prev, {
         id: `ai-${Date.now()}`,
         role: 'ai',
-        content: '죄송합니다. 일정을 처리하는 중 문제가 발생했어요.',
+        content: '죄송합니다. 응답을 처리하는 중 문제가 발생했어요.',
       }]);
     } finally {
       setIsLoading(false);

@@ -145,7 +145,7 @@ ${analysisText}
       createUserMessage(prompt),
     ];
 
-    const content = await callGroqAI(apiKey, messages, 300);
+    const content = await callGroqAI(apiKey, messages, 300, true);
     setCachedComment(content);
     return content;
   } catch (error) {

@@ -132,7 +132,7 @@ ${summary}
 총 운동 횟수: ${recentRecords.length}회
       `);
 
-      const result = await callGroqAI(apiKey, [sys, userMsg], 800);
+      const result = await callGroqAI(apiKey, [sys, userMsg], 800, true);
       setFeedback(result);
     } catch {
       setFeedback('분석 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
