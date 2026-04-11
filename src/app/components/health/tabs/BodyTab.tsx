@@ -42,6 +42,7 @@ export function BodyTab({ theme }: BodyTabProps) {
       weight: r.weight,
       bodyFat: r.bodyFat,
       muscle: r.muscleMass,
+      bmi: r.bmi ? parseFloat(r.bmi.toFixed(1)) : undefined,
     }));
   }, [sortedRecords]);
 
@@ -182,33 +183,57 @@ export function BodyTab({ theme }: BodyTabProps) {
         </div>
       )}
 
-      {/* 체중 추이 그래프 */}
+      {/* 추이 그래프 4종 — 최근 기록 아래, 히스토리 위 */}
       {chartData.length >= 2 && (
         <div
           className="rounded-2xl border p-4"
           style={{ background: theme.panelBackground, borderColor: theme.panelBorder }}
         >
-          <h2 className="text-sm font-bold mb-4" style={{ color: theme.text }}>
-            체중 추이
-          </h2>
-          <ResponsiveContainer width="100%" height={160}>
-            <LineChart data={chartData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={theme.line} vertical={false} />
-              <XAxis dataKey="date" tick={{ fontSize: 10, fill: theme.textMuted }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 10, fill: theme.textMuted }} axisLine={false} tickLine={false} domain={['auto', 'auto']} />
-              <Tooltip
-                contentStyle={{
-                  background: theme.shellBackground,
-                  border: `1px solid ${theme.shellBorder}`,
-                  borderRadius: '12px',
-                  color: theme.text,
-                  fontSize: '12px',
-                }}
-                formatter={(value: any) => [`${value}kg`, '체중']}
-              />
-              <Line type="monotone" dataKey="weight" stroke={theme.primary} strokeWidth={2.5} dot={{ fill: theme.primary, r: 3 }} activeDot={{ r: 5 }} />
-            </LineChart>
-          </ResponsiveContainer>
+          <h2 className="text-sm font-bold mb-4" style={{ color: theme.text }}>추이 그래프</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              { key: 'weight', label: '체중', unit: 'kg', color: theme.primary },
+              { key: 'muscle', label: '골격근량', unit: 'kg', color: '#10b981' },
+              { key: 'bodyFat', label: '체지방률', unit: '%', color: '#f59e0b' },
+              { key: 'bmi', label: 'BMI', unit: '', color: '#8b5cf6' },
+            ].map(chart => {
+              const hasData = chartData.some(d => d[chart.key as keyof typeof d] != null);
+              if (!hasData) return null;
+              return (
+                <div key={chart.key} className="rounded-xl p-3" style={{ background: theme.navBackground }}>
+                  <p className="text-[10px] font-semibold mb-2 uppercase tracking-widest" style={{ color: theme.textMuted }}>
+                    {chart.label}{chart.unit ? ` (${chart.unit})` : ''}
+                  </p>
+                  <ResponsiveContainer width="100%" height={80}>
+                    <LineChart data={chartData} margin={{ top: 2, right: 2, left: -30, bottom: 0 }}>
+                      <YAxis hide domain={['auto', 'auto']} />
+                      <Tooltip
+                        contentStyle={{
+                          background: theme.shellBackground || theme.panelBackground,
+                          border: `1px solid ${theme.line}`,
+                          borderRadius: '8px',
+                          color: theme.text,
+                          fontSize: '11px',
+                          padding: '4px 8px',
+                        }}
+                        formatter={(value: any) => [`${value}${chart.unit}`, chart.label]}
+                        labelFormatter={() => ''}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey={chart.key}
+                        stroke={chart.color}
+                        strokeWidth={2}
+                        dot={false}
+                        activeDot={{ r: 3, fill: chart.color }}
+                        connectNulls
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 

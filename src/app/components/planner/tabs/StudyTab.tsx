@@ -120,6 +120,10 @@ export function StudyTab() {
     setWritingCount(getTodayWritingCount());
     const prompts = getDailyWritingPrompts();
     setWritingPrompts(prompts);
+    // Auto-generate AI prompts if Gemini key is available and no saved prompts
+    if (settings.geminiApiKey && !localStorage.getItem(`writing_prompts_${todayStr}`)) {
+      generateWritingPromptsWithAI(settings.geminiApiKey);
+    }
   }, []);
   
   const getDailyWritingPrompts = (): string[] => {
@@ -225,37 +229,52 @@ export function StudyTab() {
     }
   };
   
-  const generateWritingPrompts = async () => {
-    if (!settings.geminiApiKey) return;
-
-    setIsGeneratingFeedback(true);
+  const generateWritingPromptsWithAI = async (apiKey: string) => {
+    if (!apiKey) return;
     try {
-      const messages = [
-        createGeminiMessage('system', 'You are an OPIC exam writing prompt generator. Create natural, realistic English writing prompts for Korean learners.'),
-        createGeminiMessage('user', `OPIC 시험 준비를 위한 영어 작문 프롬프트 5개를 생성해주세요.
-현실적인 일상 상황을 포함하고, 각 프롬프트는 1-2문장으로 작성해주세요.
+      // Use upcoming events as context for personalized prompts
+      const upcomingEvents = events
+        .filter(e => new Date(e.startTime) >= new Date())
+        .slice(0, 5)
+        .map(e => e.title);
+      const scheduleContext = upcomingEvents.length > 0
+        ? `사용자 일정 참고: ${upcomingEvents.join(', ')}`
+        : '';
 
-응답 형식 (JSON 배열):
-["프롬프트1", "프롬프트2", ...]`),
+      const messages = [
+        createGeminiMessage('system',
+          'You are an OPIC writing prompt generator. ' +
+          'CRITICAL RULES: (1) Output ONLY a JSON array. (2) All prompts must be in pure Korean (한국어). ' +
+          '(3) NEVER use Chinese characters (汉字/漢字). (4) No extra text outside the JSON array.'),
+        createGeminiMessage('user',
+          `OPIC 시험 준비 영작 주제 5개를 JSON 배열로 만들어주세요.\n` +
+          (scheduleContext ? scheduleContext + '\n' : '') +
+          `주제: 일상생활, 취미, 경험, 직장/학교, 미래계획 각각 1개씩.\n` +
+          `각 주제는 순수 한국어로 한 문장. 한자 절대 금지.\n` +
+          `응답 형식: ["주제1","주제2","주제3","주제4","주제5"]`),
       ];
 
-      const response = await callGeminiAI(settings.geminiApiKey, messages, 500);
-      
-      try {
-        const jsonMatch = response.match(/\[[\s\S]*?\]/);
-        if (jsonMatch) {
-          const prompts = JSON.parse(jsonMatch[0]);
+      const response = await callGeminiAI(apiKey, messages, 400);
+      const jsonMatch = response.match(/\[[\s\S]*?\]/);
+      if (jsonMatch) {
+        const prompts = JSON.parse(jsonMatch[0]);
+        if (Array.isArray(prompts) && prompts.length >= 3) {
           setWritingPrompts(prompts);
           localStorage.setItem(`writing_prompts_${todayStr}`, JSON.stringify(prompts));
         }
-      } catch {
-        console.error('Parse error');
       }
     } catch (error) {
       console.error('Prompt generation error:', error);
-    } finally {
-      setIsGeneratingFeedback(false);
     }
+  };
+
+  const generateWritingPrompts = async () => {
+    if (!settings.geminiApiKey) return;
+    setIsGeneratingFeedback(true);
+    // Clear cached prompts so fresh ones are generated
+    localStorage.removeItem(`writing_prompts_${todayStr}`);
+    await generateWritingPromptsWithAI(settings.geminiApiKey);
+    setIsGeneratingFeedback(false);
   };
   
   const addIdiomHistory = (idiom: IdiomEntry, correct: boolean) => {
@@ -290,7 +309,7 @@ export function StudyTab() {
     let feedbackResult = '';
     try {
       const messages = [
-        createGeminiMessage('system', 'You are an expert English writing coach for OPIC exam preparation. Provide detailed, accurate feedback in Korean. Never mix Chinese characters into Korean output.'),
+        createGeminiMessage('system', 'You are an expert English writing coach for OPIC exam preparation. Provide feedback ONLY in pure Korean (한국어). CRITICAL: NEVER use Chinese characters (汉字/漢字) — use only Hangul, spaces, punctuation, and English words when needed. Korean output only.'),
         createGeminiMessage('user', `다음 영어 문장에 대해 OPIC 준비용 피드백을 한국어로 제공해주세요.
 
 사용자 문장: ${capturedAnswer}
@@ -811,7 +830,7 @@ export function StudyTab() {
               </span>
               <button
                 onClick={generateWritingPrompts}
-                disabled={!settings.groqApiKey}
+                disabled={!settings.geminiApiKey || isGeneratingFeedback}
                 className="rounded-full p-2 disabled:opacity-50"
                 style={{ background: theme.navBackground, color: theme.textMuted }}
               >
@@ -891,9 +910,9 @@ export function StudyTab() {
               <div className="text-lg font-bold" style={{ color: theme.text }}>{writingCount}개</div>
             </div>
           </div>
-          {!settings.groqApiKey && (
+          {!settings.geminiApiKey && (
             <p className="mt-4 text-xs" style={{ color: theme.textMuted }}>
-              설정에서 API 키를 입력하면 AI 피드백을 받을 수 있습니다.
+              설정에서 Gemini API 키를 입력하면 AI 피드백 및 맞춤 주제를 받을 수 있습니다.
             </p>
           )}
         </div>
@@ -1078,20 +1097,23 @@ export function StudyTab() {
         })}
       </div>
 
-      <div className="flex min-h-[calc(100vh-10rem)] flex-col gap-2 md:grid md:grid-cols-[190px_minmax(0,1fr)] md:gap-4">
-        <div className="hidden md:flex md:flex-col">
+      <div className="h-[calc(100vh-10rem)] flex flex-col gap-2 md:grid md:grid-cols-[190px_minmax(0,1fr)] md:gap-4">
+        {/* 사이드바 — 화면 높이 고정 */}
+        <div className="hidden md:flex md:flex-col" style={{ height: '100%', minHeight: 0 }}>
           <aside
-            className="flex flex-1 flex-col rounded-xl md:rounded-[22px] border p-2.5 md:p-3"
+            className="flex flex-col rounded-[22px] border p-3 overflow-hidden"
             style={{
+              height: '100%',
               background: theme.panelBackground,
               borderColor: theme.panelBorder,
               boxShadow: theme.panelShadow,
             }}
           >
-            <div className="mb-3 text-xs font-semibold uppercase tracking-[0.24em]" style={{ color: theme.textMuted }}>
+            <div className="mb-3 shrink-0 text-xs font-semibold uppercase tracking-[0.24em]" style={{ color: theme.textMuted }}>
               Study Mode
             </div>
-            <div className="flex flex-1 flex-col gap-1.5">
+            {/* 탭 버튼 — 기존 사이즈 유지, flex-1 없음 */}
+            <div className="flex flex-col gap-1.5">
               {modeTabs.map(tab => {
                 const Icon = tab.icon;
                 const active = mode === tab.id;
@@ -1099,7 +1121,7 @@ export function StudyTab() {
                   <button
                     key={tab.id}
                     onClick={() => setMode(tab.id)}
-                    className="flex flex-1 items-center gap-2.5 rounded-2xl px-3.5 py-3.5 text-sm font-medium whitespace-nowrap transition-all"
+                    className="flex items-center gap-2 rounded-2xl px-3 py-2.5 text-sm font-medium whitespace-nowrap transition-all"
                     style={{
                       background: active ? theme.panelBackgroundStrong : 'transparent',
                       color: active ? theme.text : theme.textMuted,
@@ -1112,7 +1134,7 @@ export function StudyTab() {
               })}
             </div>
 
-            <div className="mt-4 space-y-2 rounded-2xl border p-3" style={{ background: theme.navBackground, borderColor: theme.line }}>
+            <div className="mt-4 shrink-0 space-y-2 rounded-2xl border p-3" style={{ background: theme.navBackground, borderColor: theme.line }}>
               <div className="text-xs" style={{ color: theme.textMuted }}>오늘 표현</div>
               <div className="text-sm font-semibold" style={{ color: theme.text }}>
                 {idiomTotal > 0 ? `${idiomTotal}개 학습` : '미시작'}
@@ -1125,9 +1147,10 @@ export function StudyTab() {
           </aside>
         </div>
 
-        <div className="flex flex-1 flex-col gap-3 pb-0">
+        {/* 콘텐츠 — 화면 높이 고정, 내부 스크롤 */}
+        <div className="flex flex-col gap-3 overflow-hidden" style={{ height: '100%', minHeight: 0 }}>
           <div
-            className="rounded-[22px] border px-4 py-3.5"
+            className="shrink-0 rounded-[22px] border px-4 py-3.5"
             style={{
               background: settings.isDarkMode
                 ? `linear-gradient(135deg, ${theme.accent1}16, ${theme.primary}16)`
@@ -1136,7 +1159,7 @@ export function StudyTab() {
               boxShadow: theme.panelShadow,
             }}
           >
-            <div className="mb-3 flex items-center gap-2">
+            <div className="mb-2 flex items-center gap-2">
               <Sparkles className="h-4 w-4" style={{ color: theme.accent1 }} />
               <span className="text-xs font-semibold uppercase tracking-[0.24em]" style={{ color: theme.textMuted }}>
                 Study Note
@@ -1144,13 +1167,17 @@ export function StudyTab() {
             </div>
             <p className="text-sm font-medium leading-6 md:text-[15px]" style={{ color: theme.text }}>
               {mode === 'idiom' && `오늘의 영어 표현 ${idiomDeck.length}개 — 카드를 탭하면 뜻이 나타납니다. 알면 ✓, 모르면 ✗로 표시하세요.`}
-              {mode === 'opic' && 'OPIC IH 이상 수준의 단어를 매일 20개씩 학습합니다. 카드를 탭하여 뜻을 확인하세요.'}
+              {mode === 'opic' && 'OPIC IH 이상 수준의 표현을 매일 학습합니다. 표현 학습 시작을 눌러 영어 표현 탭으로 이동하세요.'}
               {mode === 'writing' && '프롬프트를 읽고 영어로 작성한 뒤 AI 피드백을 받아보세요. 매일 다른 주제가 제공됩니다.'}
-              {mode === 'history' && '날짜별 학습 기록을 확인하세요. 정답과 오답을 필터링하여 볼 수 있습니다.'}
+              {mode === 'history' && '날짜별 학습 기록을 확인하세요. 표현과 작문을 필터링하여 볼 수 있습니다.'}
             </p>
           </div>
 
-          <div className="min-h-[480px] flex-1 md:min-h-[560px]">
+          {/* 스크롤 영역 — 스크롤바 숨김 */}
+          <div
+            className="study-content-scroll flex-1 overflow-y-auto pb-2"
+            style={{ minHeight: 0, scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}
+          >
             <AnimatePresence mode="wait">
               <motion.div
                 key={mode}
@@ -1173,6 +1200,7 @@ export function StudyTab() {
         .transform-style-3d { transform-style: preserve-3d; }
         .backface-hidden { backface-visibility: hidden; }
         .rotate-y-180 { transform: rotateY(180deg); }
+        .study-content-scroll::-webkit-scrollbar { display: none; }
       `}</style>
     </div>
   );
